@@ -6,7 +6,8 @@ function(buildExample EXAMPLE_NAME)
 	SET(EXAMPLE_FOLDER ${CMAKE_CURRENT_SOURCE_DIR}/${EXAMPLE_NAME})
 	message(STATUS "Generating project file for example in ${EXAMPLE_FOLDER}")
 	# Main
-	file(GLOB SOURCE *.cpp ${BASE_HEADERS} ${EXAMPLE_FOLDER}/*.cpp)
+	file(GLOB_RECURSE SOURCE ${BASE_HEADERS} ${EXAMPLE_FOLDER}/*.cpp)
+	file(GLOB_RECURSE HEADER ${EXAMPLE_FOLDER}/*.h)
 	SET(MAIN_CPP ${EXAMPLE_FOLDER}/${EXAMPLE_NAME}.cpp)
 	if(EXISTS ${EXAMPLE_FOLDER}/main.cpp)
 		SET(MAIN_CPP ${EXAMPLE_FOLDER}/main.cpp)
@@ -36,10 +37,10 @@ function(buildExample EXAMPLE_NAME)
 	# Add optional readme / tutorial
 	file(GLOB README_FILES "${EXAMPLE_FOLDER}/*.md")
 	if(WIN32)
-		add_executable(${EXAMPLE_NAME} WIN32 ${MAIN_CPP} ${SOURCE} ${MAIN_HEADER} ${SHADERS_GLSL} ${SHADERS_HLSL} ${SHADERS_SLANG} ${README_FILES})
+		add_executable(${EXAMPLE_NAME} WIN32 ${MAIN_CPP} ${SOURCE} ${HEADER} ${MAIN_HEADER} ${SHADERS_GLSL} ${SHADERS_HLSL} ${SHADERS_SLANG} ${README_FILES})
 		target_link_libraries(${EXAMPLE_NAME} base ${Vulkan_LIBRARY} ${WINLIBS})
 	else(WIN32)
-		add_executable(${EXAMPLE_NAME} ${MAIN_CPP} ${SOURCE} ${MAIN_HEADER} ${SHADERS_GLSL} ${SHADERS_HLSL} ${SHADERS_SLANG} ${README_FILES})
+		add_executable(${EXAMPLE_NAME} ${MAIN_CPP} ${SOURCE} ${HEADER} ${MAIN_HEADER} ${SHADERS_GLSL} ${SHADERS_HLSL} ${SHADERS_SLANG} ${README_FILES})
 		target_link_libraries(${EXAMPLE_NAME} base )
 	endif(WIN32)
 
@@ -88,6 +89,7 @@ endfunction(buildExamples)
 
 set(EXAMPLES
      raytracingbasic
+	 pathtracing
 )
 
 buildExamples()
