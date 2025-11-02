@@ -19,6 +19,7 @@
 /CPackSourceConfig.cmake
 /CTestTestfile.cmake
 /Testing/
+/cmake-build-debug/
 
 # --- IDEs 和 编辑器 ---
 

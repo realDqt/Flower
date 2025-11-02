@@ -1,53 +1,182 @@
-# 1. 指定 CMake 最低版本要求
-cmake_minimum_required(VERSION 3.15)
+# Copyright (C) 2016-2025 by Sascha Willems - www.saschawillems.de
+# This code is licensed under the MIT license (MIT) (http://opensource.org/licenses/MIT)
 
-set(target_name Flower)
+cmake_minimum_required(VERSION 3.10.0 FATAL_ERROR)
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
 
-# 2. 声明项目名称、版本和语言
-#    (注意：我去掉了你之前 project() 命令中多余的 "t")
-project(${target_name} VERSION 1.0 LANGUAGES CXX)
+set(NAME Flower)
 
-# 3. 设置 C++ 标准 
+project(${NAME})
+
+include_directories(external)
+include_directories(external/glm)
+include_directories(external/gli)
+include_directories(external/imgui)
+include_directories(external/tinygltf)
+include_directories(external/ktx/include)
+include_directories(external/ktx/other_include)
+include_directories(base)
+
+OPTION(USE_D2D_WSI "Build the project using Direct to Display swapchain" OFF)
+OPTION(USE_DIRECTFB_WSI "Build the project using DirectFB swapchain" OFF)
+OPTION(USE_WAYLAND_WSI "Build the project using Wayland swapchain" OFF)
+OPTION(USE_HEADLESS "Build the project using headless extension swapchain" OFF)
+OPTION(USE_RELATIVE_ASSET_PATH "Load assets (shaders, models, textures) from a fixed path relative to the binar" OFF)
+OPTION(FORCE_VALIDATION "Forces validation on for all samples at compile time (prefer using the -v / --validation command line arguments)" OFF)
+
+set(RESOURCE_INSTALL_DIR "" CACHE PATH "Path to install resources to (leave empty for running uninstalled)")
+
+message(STATUS "Using module to find Vulkan")
+find_package(Vulkan)
+
+IF(UNIX AND NOT APPLE)
+	set(LINUX TRUE)
+ENDIF()
+
+IF(WIN32)
+	IF (NOT Vulkan_FOUND)
+		find_library(Vulkan_LIBRARY NAMES vulkan-1 vulkan PATHS ${CMAKE_SOURCE_DIR}/libs/vulkan)
+		IF (Vulkan_LIBRARY)
+			set(Vulkan_FOUND ON)
+			MESSAGE("Using bundled Vulkan library version")
+		ENDIF()
+	ENDIF()
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVK_USE_PLATFORM_WIN32_KHR")
+ELSEIF(LINUX)
+	IF (NOT Vulkan_FOUND)
+		find_library(Vulkan_LIBRARY NAMES vulkan HINTS "$ENV{VULKAN_SDK}/lib" "${CMAKE_SOURCE_DIR}/libs/vulkan" REQUIRED)
+		IF (Vulkan_LIBRARY)
+			set(Vulkan_FOUND ON)
+			MESSAGE("Using bundled Vulkan library version")
+		ENDIF()
+	ENDIF()
+	find_package(Threads REQUIRED)
+	IF(USE_D2D_WSI)
+		MESSAGE("Using direct to display extension...")
+		add_definitions(-D_DIRECT2DISPLAY)
+	ELSEIF(USE_DIRECTFB_WSI)
+		find_package(DirectFB REQUIRED)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVK_USE_PLATFORM_DIRECTFB_EXT")
+		include_directories(${DIRECTFB_INCLUDE_DIR})
+	ELSEIF(USE_WAYLAND_WSI)
+		find_program(PKG_CONFIG pkg-config)
+		if (NOT PKG_CONFIG)
+			message(FATAL_ERROR "pkg-config binary not found")
+		endif ()
+		find_package(Wayland REQUIRED)
+		if (NOT WAYLAND_FOUND)
+			message(FATAL_ERROR "Wayland development package not found")
+		endif ()
+		pkg_check_modules(WAYLAND_PROTOCOLS REQUIRED wayland-protocols)
+		if (NOT WAYLAND_PROTOCOLS_FOUND)
+			message(FATAL_ERROR "Wayland protocols package not found")
+		endif ()
+		find_program(WAYLAND_SCANNER wayland-scanner)
+		if (NOT WAYLAND_SCANNER)
+			message(FATAL_ERROR "wayland-scanner binary not found")
+		endif ()
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVK_USE_PLATFORM_WAYLAND_KHR")
+		include_directories(${WAYLAND_INCLUDE_DIR})
+		pkg_get_variable(protocol_dir wayland-protocols pkgdatadir)
+		execute_process(COMMAND ${WAYLAND_SCANNER} client-header ${protocol_dir}/stable/xdg-shell/xdg-shell.xml ${CMAKE_BINARY_DIR}/xdg-shell-client-protocol.h
+				COMMAND ${WAYLAND_SCANNER} private-code ${protocol_dir}/stable/xdg-shell/xdg-shell.xml ${CMAKE_BINARY_DIR}/xdg-shell-protocol.c)
+		include_directories(${CMAKE_BINARY_DIR})
+	ELSEIF(USE_HEADLESS)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVK_USE_PLATFORM_HEADLESS_EXT")
+	ELSE(USE_D2D_WSI)
+		find_package(XCB REQUIRED)
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVK_USE_PLATFORM_XCB_KHR")
+	ENDIF(USE_D2D_WSI)
+ELSEIF(APPLE)
+	IF (CMAKE_GENERATOR MATCHES "Xcode")
+		# Suppress regeneration for Xcode since environment variables will be lost if not set in Xcode locations/custom paths
+		set(CMAKE_SUPPRESS_REGENERATION ON)
+		set(CMAKE_XCODE_GENERATE_SCHEME ON)
+		IF (Vulkan_FOUND)
+			# If the Vulkan loader was found and its environment variables are defined, make them available within Xcode schemes
+			IF (DEFINED ENV{VK_ADD_LAYER_PATH})
+				set(CMAKE_XCODE_SCHEME_ENVIRONMENT "${CMAKE_XCODE_SCHEME_ENVIRONMENT};VK_ADD_LAYER_PATH=$ENV{VK_ADD_LAYER_PATH}")
+			ENDIF()
+			IF (DEFINED ENV{VK_ICD_FILENAMES})
+				set(CMAKE_XCODE_SCHEME_ENVIRONMENT "${CMAKE_XCODE_SCHEME_ENVIRONMENT};VK_ICD_FILENAMES=$ENV{VK_ICD_FILENAMES}")
+			ENDIF()
+			IF (DEFINED ENV{VK_DRIVER_FILES})
+				set(CMAKE_XCODE_SCHEME_ENVIRONMENT "${CMAKE_XCODE_SCHEME_ENVIRONMENT};VK_DRIVER_FILES=$ENV{VK_DRIVER_FILES}")
+			ENDIF()
+		ENDIF()
+	ENDIF()
+	IF (NOT Vulkan_FOUND)
+		# If the Vulkan loader was not found, then look for libMoltenVK.dylib in the Vulkan SDK and legacy MoltenVK locations
+		set(CMAKE_FIND_FRAMEWORK NEVER)
+		find_library(Vulkan_LIBRARY NAMES MoltenVK HINTS "$ENV{VULKAN_SDK}/lib" "$ENV{VULKAN_SDK}/dylib/macOS" REQUIRED)
+		IF (Vulkan_LIBRARY)
+			set(Vulkan_FOUND ON)
+			MESSAGE(STATUS "Using MoltenVK Vulkan Portability library")
+		ENDIF()
+	ENDIF()
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVK_USE_PLATFORM_METAL_EXT -DVK_EXAMPLE_XCODE_GENERATED")
+	# Todo : android?
+ENDIF(WIN32)
+
+IF (NOT Vulkan_FOUND)
+	message(FATAL_ERROR "Could not find Vulkan library!")
+ELSE()
+	message(STATUS ${Vulkan_LIBRARY})
+ENDIF()
+
+# Set preprocessor defines
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DNOMINMAX -D_USE_MATH_DEFINES")
+
+# Clang specific stuff
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-switch-enum")
+endif()
+
+
+add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 4. 查找源文件 (递归版本)
-file(GLOB_RECURSE SOURCES 
-    "src/*.cpp"
-)
-file(GLOB_RECURSE INCLUDES 
-    "include/*.h" 
-)
+file(GLOB SOURCE *.cpp )
 
-# 5. [FIX 1] 创建可执行文件目标
-#    这一步必须在 target_link_libraries 之前！
-add_executable(${target_name} 
-    ${SOURCES}
-    ${INCLUDES}
-)
+# Asset and shader path selection
+if(RESOURCE_INSTALL_DIR)
+	add_definitions(-DVK_EXAMPLE_ASSETS_DIR=\"${RESOURCE_INSTALL_DIR}/\")
+	add_definitions(-DVK_EXAMPLE_SHADERS_DIR=\"${RESOURCE_INSTALL_DIR}/shaders/\")
+	install(DIRECTORY assets/ DESTINATION ${RESOURCE_INSTALL_DIR}/)
+	install(DIRECTORY shaders/ DESTINATION ${RESOURCE_INSTALL_DIR}/shaders/)
+else()
+	if(NOT USE_RELATIVE_ASSET_PATH)
+		add_definitions(-DVK_EXAMPLE_ASSETS_DIR=\"${CMAKE_SOURCE_DIR}/assets/\")
+		add_definitions(-DVK_EXAMPLE_SHADERS_DIR=\"${CMAKE_SOURCE_DIR}/shaders/\")
+	endif()
+endif()
 
-# 6. [FIX 2] 使用 target_include_directories (新方式)
-#    替换所有旧的 include_directories()
-#    这更安全，因为它只应用到 "Flower" 目标
-target_include_directories(${target_name} PRIVATE
-    external
-    external/glm
-    external/gli
-    external/imgui
-    external/tinygltf
-    external/ktx/include
-    external/ktx/other_include
-    base
-)
+# Force validation at compile time
+if (FORCE_VALIDATION)
+	add_definitions(-DFORCE_VALIDATION)
+endif()
 
-# 7. 查找并链接 Vulkan
-find_package(Vulkan REQUIRED)
-set(Vulkan_LIBRARY Vulkan::Vulkan)
-#    [FIX 3] target_link_libraries 移到了 add_executable 之后
-#    [FIX 4] 对于可执行文件，链接库应该使用 PRIVATE 而不是 PUBLIC
-target_link_libraries(${target_name} PRIVATE
-    ${Vulkan_LIBRARY}
-)
+# Compiler specific stuff
+IF(MSVC)
+	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc")
+ELSEIF(APPLE)
+	IF(CMAKE_GENERATOR MATCHES "Makefiles" OR CMAKE_GENERATOR MATCHES "Ninja")
+		SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fobjc-arc -ObjC++")
+	ELSE() # SRS - use objective-c++ language flag vs. ObjC++ for Xcode builds
+		SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fobjc-arc -xobjective-c++")
+	ENDIF()
+ENDIF(MSVC)
 
-# 8. 添加子目录
+IF(WIN32)
+	# Nothing here (yet)
+ELSEIF(APPLE)
+	link_libraries(${Vulkan_LIBRARY} "-framework AppKit" "-framework QuartzCore")
+ELSE(WIN32)
+	link_libraries(${XCB_LIBRARIES} ${Vulkan_LIBRARY} ${Vulkan_LIBRARY} ${DIRECTFB_LIBRARIES} ${WAYLAND_CLIENT_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
+ENDIF(WIN32)
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/")
+
 add_subdirectory(base)
+add_subdirectory(src)
