@@ -56,8 +56,8 @@ void main()
 	shadowed = true;  
 	vec3 lightVector = vec3(-5.0, -2.5, -5.0);
 	// Trace shadow ray and offset indices to match shadow hit/miss shader group indices
-//	traceRayEXT(topLevelAS, gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT, 0xFF, 0, 0, 1, origin, tmin, lightVector, tmax, 2);
-//	if (shadowed) {
-//		hitValue *= 0.7;
-//	}
+	traceRayEXT(topLevelAS, gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT, 0xFF, 0, 0, 1, origin, tmin, lightVector, tmax, 2);
+	if (shadowed) {
+		hitValue *= 0.7;
+	}
 }

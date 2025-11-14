@@ -43,7 +43,7 @@ void main()
 
 	vec4 origin = cam.viewInverse * vec4(0,0,0,1);
 	vec4 target = cam.projInverse * vec4(d.x, d.y, 1, 1) ;
-	vec4 direction = cam.viewInverse*vec4(normalize(target.xyz), 0.0) ;
+	vec4 direction = cam.viewInverse * vec4(normalize(target.xyz), 0.0) ;
 
 	float tmin = 0.001;
 	float tmax = 10000.0;
