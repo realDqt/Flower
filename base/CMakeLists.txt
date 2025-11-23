@@ -12,9 +12,11 @@ set(KTX_SOURCES
     ${KTX_DIR}/lib/swap.c
     ${KTX_DIR}/lib/memstream.c
     ${KTX_DIR}/lib/filestream.c
-    ${KTX_DIR}/lib/vkloader.c)
+    ${KTX_DIR}/lib/vkloader.c
+        VulkanObjModel.cpp)
 
-add_library(base STATIC ${BASE_SRC} ${KTX_SOURCES})
+add_library(base STATIC ${BASE_SRC} ${KTX_SOURCES}
+        VulkanObjModel.h)
 if(WIN32)
     target_link_libraries(base ${Vulkan_LIBRARY} ${WINLIBS})
  else(WIN32)
