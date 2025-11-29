@@ -38,12 +38,50 @@ std::vector<VkVertexInputAttributeDescription> vkobj::Vertex::inputAttributeDesc
 
 /** @brief Returns the default pipeline vertex input state create info structure for the requested vertex components */
 VkPipelineVertexInputStateCreateInfo* vkobj::Vertex::getPipelineVertexInputState(const std::vector<VertexComponent> components) {
-    vertexInputBindingDescription = Vertex::inputBindingDescription(0);
-    Vertex::vertexInputAttributeDescriptions = Vertex::inputAttributeDescriptions(0, components);
+    vertexInputBindingDescription = inputBindingDescription(0);
+    vertexInputAttributeDescriptions = inputAttributeDescriptions(0, components);
     pipelineVertexInputStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     pipelineVertexInputStateCreateInfo.vertexBindingDescriptionCount = 1;
-    pipelineVertexInputStateCreateInfo.pVertexBindingDescriptions = &Vertex::vertexInputBindingDescription;
+    pipelineVertexInputStateCreateInfo.pVertexBindingDescriptions = &vertexInputBindingDescription;
     pipelineVertexInputStateCreateInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(Vertex::vertexInputAttributeDescriptions.size());
-    pipelineVertexInputStateCreateInfo.pVertexAttributeDescriptions = Vertex::vertexInputAttributeDescriptions.data();
+    pipelineVertexInputStateCreateInfo.pVertexAttributeDescriptions = vertexInputAttributeDescriptions.data();
     return &pipelineVertexInputStateCreateInfo;
+}
+
+void vkobj::Material::createDescriptorSet(VkDescriptorPool descriptorPool, VkDescriptorSetLayout descriptorSetLayout,
+                                          uint32_t descriptorBindingFlags) {
+    // TODO: 考虑纹理
+}
+
+
+void vkobj::Primitive::setDimensions(glm::vec3 min, glm::vec3 max) {
+    dimensions.min = min;
+    dimensions.max = max;
+    dimensions.size = max - min;
+    dimensions.center = (min + max) / 2.0f;
+    dimensions.radius = glm::distance(min, max) / 2.0f;
+}
+
+
+vkobj::Mesh::Mesh(vks::VulkanDevice *device, glm::mat4 matrix) {
+    this->device = device;
+    this->uniformBlock.matrix = matrix;
+    VK_CHECK_RESULT(device->createBuffer(
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            sizeof(uniformBlock),
+            &uniformBuffer.buffer,
+            &uniformBuffer.memory,
+            &uniformBlock));
+    VK_CHECK_RESULT(vkMapMemory(device->logicalDevice, uniformBuffer.memory, 0, sizeof(uniformBlock), 0, &uniformBuffer.mapped));
+    uniformBuffer.descriptor = { uniformBuffer.buffer, 0, sizeof(uniformBlock) };
+}
+
+vkobj::Mesh::~Mesh(){
+    vkDestroyBuffer(device->logicalDevice, uniformBuffer.buffer, nullptr);
+    vkFreeMemory(device->logicalDevice, uniformBuffer.memory, nullptr);
+    for(auto primitive : primitives)
+    {
+        delete primitive;
+    }
 }

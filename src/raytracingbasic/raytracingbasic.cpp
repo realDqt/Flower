@@ -133,19 +133,16 @@ public:
 					if (primitive->indexCount > 0) {
 						VkTransformMatrixKHR transformMatrix{};
 						//auto m = glm::mat3x4(glm::transpose(node->getMatrix()));
-						// »∆ Z ÷· 180°„
 						auto m_z = glm::mat3x4(
 							glm::rotate(glm::mat4(1.0f),
 								glm::radians(180.0f),
 								glm::vec3(0, 0, 1)));
-
-						// »∆ X ÷· 180°„
+						
 						auto m_x = glm::mat3x4(
 							glm::rotate(glm::mat4(1.0f),
 								glm::radians(180.0f),
 								glm::vec3(1, 0, 0)));
-
-						// »∆ Y ÷· 180°„
+						
 						auto m_y = glm::mat3x4(
 							glm::rotate(glm::mat4(1.0f),
 								glm::radians(180.0f),
