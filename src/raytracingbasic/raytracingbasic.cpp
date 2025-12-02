@@ -179,7 +179,7 @@ public:
 						VkDeviceOrHostAddressConstKHR indexBufferDeviceAddress{};
 						VkDeviceOrHostAddressConstKHR transformBufferDeviceAddress{};
 
-						vertexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(scene.vertices.buffer);// +primitive->firstVertex * sizeof(vkglTF::Vertex);
+						vertexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(scene.vertices.buffer);
 						indexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(scene.indices.buffer) + primitive->firstIndex * sizeof(uint32_t);
 						transformBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(transformBuffer.buffer) + static_cast<uint32_t>(geometryNodes.size()) * sizeof(VkTransformMatrixKHR);
 
@@ -190,7 +190,6 @@ public:
 						geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
 						geometry.geometry.triangles.vertexData = vertexBufferDeviceAddress;
 						geometry.geometry.triangles.maxVertex = scene.vertices.count;
-						//geometry.geometry.triangles.maxVertex = primitive->vertexCount;
 						geometry.geometry.triangles.vertexStride = sizeof(vkglTF::Vertex);
 						geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
 						geometry.geometry.triangles.indexData = indexBufferDeviceAddress;
@@ -200,7 +199,7 @@ public:
 
 						VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo{};
 						buildRangeInfo.firstVertex = 0;
-						buildRangeInfo.primitiveOffset = 0; // primitive->firstIndex * sizeof(uint32_t);
+						buildRangeInfo.primitiveOffset = 0;
 						buildRangeInfo.primitiveCount = primitive->indexCount / 3;
 						buildRangeInfo.transformOffset = 0;
 						buildRangeInfos.push_back(buildRangeInfo);

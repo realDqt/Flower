@@ -10,8 +10,9 @@
 
 #include "VulkanRaytracingSample.h"
 #include "VulkanglTFModel.h"
+#include "VulkanObjModel.h"
 
-class VulkanExample : public VulkanRaytracingSample
+class CornellBox : public VulkanRaytracingSample
 {
 public:
     AccelerationStructure bottomLevelAS{};
@@ -38,9 +39,13 @@ public:
     std::array<VkDescriptorSet, maxConcurrentFrames> descriptorSets{};
 
     vkglTF::Model scene;
-
+    
+    vkobj::Model cornell;
+    std::vector<std::string> filenames;
+    std::vector<vkobj::Material> materials;
+    
     // This sample is derived from an extended base class that saves most of the ray tracing setup boiler plate
-    VulkanExample() : VulkanRaytracingSample()
+    CornellBox() : VulkanRaytracingSample()
     {
         title = "Ray tracing reflections";
         timerSpeed *= 0.5f;
@@ -52,7 +57,7 @@ public:
         enableExtensions();
     }
 
-    ~VulkanExample()
+    ~CornellBox()
     {
         vkDestroyPipeline(device, pipeline, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
@@ -66,6 +71,15 @@ public:
         for (auto& buffer : uniformBuffers) {
             buffer.destroy();
         }
+    }
+
+    void prepareCornellAssets()
+    {
+        filenames.clear();
+        materials.clear();
+
+        // TODO: 准备路径与材质
+        // TODO: 加载obj
     }
 
     /*
@@ -466,10 +480,13 @@ public:
         deviceCreatepNextChain = &enabledAccelerationStructureFeatures;
     }
 
+    
+
     void prepare()
     {
         VulkanRaytracingSample::prepare();
-
+        
+        prepareCornellAssets();
         // Create the acceleration structures used to render the ray traced scene
         createBottomLevelAccelerationStructure();
         createTopLevelAccelerationStructure();
@@ -574,4 +591,24 @@ public:
     }
 };
 
-VULKAN_EXAMPLE_MAIN()
+
+CornellBox *cornellBox;																		
+LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)						
+{																									
+    if (cornellBox != NULL)																		
+    {																								
+        cornellBox->handleMessages(hWnd, uMsg, wParam, lParam);									
+    }																								
+    return (DefWindowProc(hWnd, uMsg, wParam, lParam));												
+}																									
+int APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_  HINSTANCE hPrevInstance, _In_ LPSTR, _In_ int) 
+{																									
+    for (int32_t i = 0; i < __argc; i++) { CornellBox::args.push_back(__argv[i]); }			
+    cornellBox = new CornellBox();															
+    cornellBox->initVulkan();																	
+    cornellBox->setupWindow(hInstance, WndProc);													
+    cornellBox->prepare();																		
+    cornellBox->renderLoop();																	
+    delete(cornellBox);																			
+    return 0;																						
+}

@@ -2,8 +2,8 @@
 // Created by 22473 on 2025-11-23.
 //
 
-#ifndef MISS_RMISS_VULKANOBJMODEL_H
-#define MISS_RMISS_VULKANOBJMODEL_H
+#ifndef VULKANOBJMODEL_H
+#define VULKANOBJMODEL_H
 #pragma once
 
 #include <stdlib.h>
@@ -20,11 +20,16 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include <tiny_obj_loader.h>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/hash.hpp>
+
+#include <unordered_map>
 
 namespace vkobj{
 
     enum class VertexComponent { Position, Normal, UV, Color};
+
+    extern VkMemoryPropertyFlags memoryPropertyFlags;
 
     struct Vertex {
         glm::vec3 pos;
@@ -39,6 +44,10 @@ namespace vkobj{
         static std::vector<VkVertexInputAttributeDescription> inputAttributeDescriptions(uint32_t binding, const std::vector<VertexComponent> components);
         /** @brief Returns the default pipeline vertex input state create info structure for the requested vertex components */
         static VkPipelineVertexInputStateCreateInfo* getPipelineVertexInputState(const std::vector<VertexComponent> components);
+
+        bool operator==(const Vertex& other) const {
+            return pos == other.pos && normal == other.normal && uv == other.uv;
+        }
     };
 
 
@@ -51,51 +60,23 @@ namespace vkobj{
         VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 
         Material(vks::VulkanDevice* device) : device(device) {};
+        ~Material(){}
         void createDescriptorSet(VkDescriptorPool descriptorPool, VkDescriptorSetLayout descriptorSetLayout, uint32_t descriptorBindingFlags);
-    };
-
-
-    struct Primitive {
-        uint32_t firstIndex;
-        uint32_t indexCount;
-        uint32_t firstVertex;
-        uint32_t vertexCount;
-        Material& material;
-
-        struct Dimensions {
-            glm::vec3 min = glm::vec3(FLT_MAX);
-            glm::vec3 max = glm::vec3(-FLT_MAX);
-            glm::vec3 size;
-            glm::vec3 center;
-            float radius;
-        } dimensions;
-
-        void setDimensions(glm::vec3 min, glm::vec3 max);
-        Primitive(uint32_t firstIndex, uint32_t indexCount, Material& material) : firstIndex(firstIndex), indexCount(indexCount), material(material) {};
     };
 
 
     struct Mesh {
         vks::VulkanDevice* device;
 
-        std::vector<Primitive*> primitives;
+        uint32_t firstIndex;
+        uint32_t indexCount;
+        uint32_t firstVertex; // 需要?
+        uint32_t vertexCount; // 需要?
+        Material& material;
         std::string name;
 
-        struct UniformBuffer {
-            VkBuffer buffer;
-            VkDeviceMemory memory;
-            VkDescriptorBufferInfo descriptor;
-            VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-            void* mapped;
-        } uniformBuffer;
 
-        struct UniformBlock {
-            glm::mat4 matrix;
-            glm::mat4 jointMatrix[64]{};
-            float jointcount{ 0 };
-        } uniformBlock;
-
-        Mesh(vks::VulkanDevice* device, glm::mat4 matrix);
+        Mesh(uint32_t firstIndex, uint32_t indexCount, Material& material) : firstIndex(firstIndex), indexCount(indexCount), material(material){} ;
         ~Mesh();
     };
 
@@ -115,12 +96,26 @@ namespace vkobj{
         } indices;
 
         std::vector<Mesh*> meshes;
+        std::vector<Material> materials;
 
-        Model(){}
+        Model(){
+            meshes.clear();
+            materials.clear();
+        }
 
-        void loadSceneFromFile(std::vector<std::string> filenames, vks::VulkanDevice* device, VkQueue transferQueue);
+        ~Model();
+        void loadFromFile(const std::vector<std::string>& filenames, const std::vector<Material>& _materials, vks::VulkanDevice* device, VkQueue transferQueue);
     };
 }
 
+namespace std {
+    template<> struct hash<vkobj::Vertex> {
+        size_t operator()(vkobj::Vertex const& vertex) const {
+            return ((hash<glm::vec3>()(vertex.pos) ^
+                     (hash<glm::vec3>()(vertex.normal) << 1)) >> 1) ^
+                   (hash<glm::vec2>()(vertex.uv) << 1);
+        }
+    };
+}
 
-#endif //MISS_RMISS_VULKANOBJMODEL_H
+#endif //VULKANOBJMODEL_H
