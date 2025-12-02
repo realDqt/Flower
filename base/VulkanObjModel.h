@@ -53,28 +53,29 @@ namespace vkobj{
 
     struct Material {
         vks::VulkanDevice* device = nullptr;
-        float metallicFactor = 1.0f;
-        float roughnessFactor = 1.0f;
-        glm::vec4 baseColorFactor = glm::vec4(1.0f);
+        float metallic = 1.0f;
+        float roughness = 1.0f;
+        glm::vec4 baseColor = glm::vec4(1.0f);
 
         VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 
-        Material(vks::VulkanDevice* device) : device(device) {};
+        Material(){}
+        Material(const Material& rhs);
+        Material(vks::VulkanDevice* device) : device(device) {}
         ~Material(){}
         void createDescriptorSet(VkDescriptorPool descriptorPool, VkDescriptorSetLayout descriptorSetLayout, uint32_t descriptorBindingFlags);
     };
 
 
     struct Mesh {
-        vks::VulkanDevice* device;
 
+        vks::VulkanDevice* device;
         uint32_t firstIndex;
         uint32_t indexCount;
         uint32_t firstVertex; // 需要?
         uint32_t vertexCount; // 需要?
         Material& material;
         std::string name;
-
 
         Mesh(uint32_t firstIndex, uint32_t indexCount, Material& material) : firstIndex(firstIndex), indexCount(indexCount), material(material){} ;
         ~Mesh();

@@ -77,9 +77,34 @@ public:
     {
         filenames.clear();
         materials.clear();
+        
+        // 准备路径与材质
+        std::string assetPath = getAssetPath();
+        filenames.push_back(assetPath + "models/cornellbox/floor.obj");
+        filenames.push_back(assetPath + "models/cornellbox/left.obj");
+        filenames.push_back(assetPath + "models/cornellbox/light.obj");
+        filenames.push_back(assetPath + "models/cornellbox/right.obj");
+        filenames.push_back(assetPath + "models/cornellbox/shortbox.obj");
+        filenames.push_back(assetPath + "models/cornellbox/tallbox.obj");
 
-        // TODO: 准备路径与材质
-        // TODO: 加载obj
+        vkobj::Material red(vulkanDevice);
+        red.baseColor =  glm::vec4(0.63f, 0.065f, 0.05f, 1.0f);
+        vkobj::Material green(vulkanDevice);
+        green.baseColor =  glm::vec4(0.14f, 0.45f, 0.091f, 1.0f);
+        vkobj::Material white(vulkanDevice);
+        white.baseColor =  glm::vec4(0.725f, 0.71f, 0.68f, 1.0f);
+        vkobj::Material light(vulkanDevice);
+        light.baseColor =  glm::vec4(0.65f, 0.65f, 0.65f, 1.0f);
+
+        materials.push_back(white);
+        materials.push_back(red);
+        materials.push_back(light);
+        materials.push_back(green);
+        materials.push_back(white);
+        materials.push_back(white);
+        
+        // 加载obj
+        cornell.loadFromFile(filenames, materials, vulkanDevice, queue);
     }
 
     /*

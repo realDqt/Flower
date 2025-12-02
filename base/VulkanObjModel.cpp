@@ -5,6 +5,8 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
 
+#include "VulkanglTFModel.h"
+
 VkVertexInputBindingDescription vkobj::Vertex::vertexInputBindingDescription;
 std::vector<VkVertexInputAttributeDescription> vkobj::Vertex::vertexInputAttributeDescriptions;
 VkPipelineVertexInputStateCreateInfo vkobj::Vertex::pipelineVertexInputStateCreateInfo;
@@ -58,6 +60,15 @@ void vkobj::Material::createDescriptorSet(VkDescriptorPool descriptorPool, VkDes
 }
 
 
+vkobj::Material::Material(const Material& rhs)
+{
+    device = rhs.device;
+    metallic = rhs.metallic;
+    roughness = rhs.roughness;
+    baseColor = rhs.baseColor;
+    descriptorSet = rhs.descriptorSet;
+}
+
 
 vkobj::Mesh::~Mesh(){
 }
@@ -83,6 +94,7 @@ static void loadFromFileIntern(const std::string& filename,
     if (!err.empty()) std::cerr << "TinyObj Error (" << filename << "): " << err << std::endl;
     if (!ret) throw std::runtime_error("Failed to load OBJ file: " + filename);
 
+    std::cout << "loading " << filename << std::endl;
     // 2. 局部去重 Map
     // 这个 map 只负责当前文件的去重。
     // 注意：如果你希望不同 OBJ 文件之间共享顶点（通常不需要），需要把这个 map 传进来。
@@ -142,7 +154,10 @@ static void loadFromFileIntern(const std::string& filename,
 }
 
 void vkobj::Model::loadFromFile(const std::vector<std::string>& filenames, const std::vector<Material>& _materials, vks::VulkanDevice *device, VkQueue transferQueue) {
+    assert(filenames.size() == _materials.size());
+    
     materials = _materials;
+    this->device = device;
 
     std::vector<Vertex> vertexBuffer{};
     std::vector<uint32_t> indexBuffer{};
