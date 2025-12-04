@@ -37,9 +37,6 @@ void main()
     const vec2 inUV        = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
     vec2       d           = inUV * 2.0 - 1.0;
 
-//	const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
-//	const vec2 inUV = pixelCenter/vec2(gl_LaunchSizeEXT.xy);
-//	vec2 d = inUV * 2.0 - 1.0;
 
 	vec4 origin = cam.viewInverse * vec4(0,0,0,1);
 	vec4 target = cam.projInverse * vec4(d.x, d.y, 1, 1) ;
@@ -51,28 +48,26 @@ void main()
     hitValue = vec3(0.0);
 	vec3 hitValues = vec3(0);
 
-	const int samples = 4;
+	const int samples = 1;
 
 	// Trace multiple rays for e.g. transparency
 	 for(int smpl = 0; smpl < samples; smpl++) {
-		payloadSeed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, cam.frame);
+		// payloadSeed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, cam.frame);
 		traceRayEXT(topLevelAS, gl_RayFlagsNoneEXT, 0xff, 0, 0, 0, origin.xyz, tmin, direction.xyz, tmax, 0);
 		hitValues += hitValue;
 	}
 
-//	imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValues / float(samples), 0.0));
-
 	vec3 hitVal = hitValues / float(samples);
 
-  if(cam.frame > 0)
-  {
-    float a         = 1.0f / float(cam.frame + 1);
-    vec3  old_color = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
-    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, hitVal, a), 1.f));
-  }
-  else
-  {
-    // First frame, replace the value in the buffer
-    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitVal, 1.f));
-  }
+	if(cam.frame > 0)
+	{
+		float a         = 1.0f / float(cam.frame + 1);
+		vec3  old_color = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
+		imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, hitVal, a), 1.f));
+	}
+	else
+	{
+		// First frame, replace the value in the buffer
+		imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitVal, 1.f));
+	}
 }

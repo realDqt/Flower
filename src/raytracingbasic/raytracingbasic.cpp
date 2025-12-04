@@ -499,11 +499,13 @@ public:
 			VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
 			shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
 			shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+            shaderGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
+            shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
+            shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+
 			shaderGroup.generalShader = static_cast<uint32_t>(shaderStages.size()) - 1;
-			shaderGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
-			shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
-			shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
 			shaderGroups.push_back(shaderGroup);
+
 			// Second shader for shadows
 			shaderStages.push_back(loadShader(getShadersPath() + "raytracingbasic/shadow.rmiss.spv", VK_SHADER_STAGE_MISS_BIT_KHR));
 			shaderGroup.generalShader = static_cast<uint32_t>(shaderStages.size()) - 1;
