@@ -9,7 +9,6 @@
 */
 
 #include "VulkanRaytracingSample.h"
-#include "VulkanglTFModel.h"
 #include "VulkanObjModel.h"
 
 class CornellBox : public VulkanRaytracingSample
@@ -46,8 +45,6 @@ public:
     VkPipelineLayout pipelineLayout{ VK_NULL_HANDLE };
     VkDescriptorSetLayout descriptorSetLayout{ VK_NULL_HANDLE };
     std::array<VkDescriptorSet, maxConcurrentFrames> descriptorSets{};
-
-    vkglTF::Model scene;
     
     vkobj::Model cornell;
     std::vector<std::string> filenames;
@@ -59,7 +56,7 @@ public:
     CornellBox() : VulkanRaytracingSample()
     {
         title = "Ray tracing reflections";
-        timerSpeed *= 0.5f;
+        timerSpeed *= 100.0f;
         camera.rotationSpeed *= 0.25f;
         camera.type = Camera::CameraType::firstperson;
         camera.setPerspective(60.0f, (float)width / (float)height, 0.1f, 512.0f);
@@ -88,7 +85,7 @@ public:
     }
 
 	// done
-    void prepareCornellAssets()
+    void loadAssets()
     {
         filenames.clear();
         materials.clear();
@@ -150,13 +147,14 @@ public:
 	// done
     void createBottomLevelAccelerationStructure()
     {
-    	// Use transform matrices from the glTF nodes
     	std::vector<VkTransformMatrixKHR> transformMatrices{};
     	for (auto mesh : cornell.meshes) {
     		if (mesh->indexCount > 0) {
     			VkTransformMatrixKHR transformMatrix{};
-    			auto m = glm::mat3x4(glm::mat4(1.0f));
-    			memcpy(&transformMatrix, (void*)&m, sizeof(glm::mat3x4));
+    			auto m44 = glm::mat4(1.0f);
+    			m44 = glm::scale(m44, glm::vec3(0.1f, 0.1f, 0.01f));
+    			auto m34 = glm::mat3x4(m44);
+    			memcpy(&transformMatrix, (void*)&m34, sizeof(glm::mat3x4));
     			transformMatrices.push_back(transformMatrix);
     		}
     	}
@@ -170,7 +168,7 @@ public:
 			transformMatrices.data()));
     	
         // Build
-		// One geometry per glTF node, so we can index materials using gl_GeometryIndexEXT
+		// One geometry per obj, so we can index materials using gl_GeometryIndexEXT
 		std::vector<uint32_t> maxPrimitiveCounts{};
 		std::vector<VkAccelerationStructureGeometryKHR> geometries{};
 		std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRangeInfos{};
@@ -183,8 +181,8 @@ public:
 				VkDeviceOrHostAddressConstKHR indexBufferDeviceAddress{};
 				VkDeviceOrHostAddressConstKHR transformBufferDeviceAddress{};
 
-				vertexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(scene.vertices.buffer);
-				indexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(scene.indices.buffer) + mesh->firstIndex * sizeof(uint32_t);
+				vertexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(cornell.vertices.buffer);
+				indexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(cornell.indices.buffer) + mesh->firstIndex * sizeof(uint32_t);
 				transformBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(transformBuffer.buffer) + static_cast<uint32_t>(geometryNodes.size()) * sizeof(VkTransformMatrixKHR);
 
 				VkAccelerationStructureGeometryKHR geometry{};
@@ -193,8 +191,8 @@ public:
 				geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
 				geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
 				geometry.geometry.triangles.vertexData = vertexBufferDeviceAddress;
-				geometry.geometry.triangles.maxVertex = scene.vertices.count;
-				geometry.geometry.triangles.vertexStride = sizeof(vkglTF::Vertex);
+				geometry.geometry.triangles.maxVertex = cornell.vertices.count;
+				geometry.geometry.triangles.vertexStride = sizeof(vkobj::Vertex);
 				geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
 				geometry.geometry.triangles.indexData = indexBufferDeviceAddress;
 				geometry.geometry.triangles.transformData = transformBufferDeviceAddress;
@@ -646,7 +644,7 @@ public:
     {
         VulkanRaytracingSample::prepare();
         
-        prepareCornellAssets();
+        loadAssets();
         // Create the acceleration structures used to render the ray traced scene
         createBottomLevelAccelerationStructure();
         createTopLevelAccelerationStructure();
