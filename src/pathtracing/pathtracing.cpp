@@ -28,8 +28,7 @@ public:
     struct UniformData {
         glm::mat4 viewInverse;
         glm::mat4 projInverse;
-        glm::vec4 lightPos;
-        int32_t vertexSize{ 0 };
+    	uint32_t frame = 0;
     } uniformData;
 
 	struct GeometryNode {
@@ -37,10 +36,8 @@ public:
 		uint64_t indexBufferDeviceAddress;
 	};
 	vks::Buffer geometryNodesBuffer;
-
-	vks::Buffer vertexBuffer;
-	vks::Buffer indexBuffer;
-	uint32_t indexCount{ 0 };
+	vks::Buffer baseColorsBuffer;
+	
 	vks::Buffer transformBuffer;
 	
     std::array<vks::Buffer, maxConcurrentFrames> uniformBuffers;
@@ -55,6 +52,8 @@ public:
     vkobj::Model cornell;
     std::vector<std::string> filenames;
     std::vector<vkobj::Material> materials;
+
+	VkPhysicalDeviceDescriptorIndexingFeaturesEXT physicalDeviceDescriptorIndexingFeatures{};
     
     // This sample is derived from an extended base class that saves most of the ray tracing setup boiler plate
     CornellBox() : VulkanRaytracingSample()
@@ -77,18 +76,18 @@ public:
         deleteStorageImage();
         deleteAccelerationStructure(bottomLevelAS);
         deleteAccelerationStructure(topLevelAS);
-    	vertexBuffer.destroy();
-    	indexBuffer.destroy();
     	transformBuffer.destroy();
     	shaderBindingTables.raygen.destroy();
     	shaderBindingTables.miss.destroy();
     	shaderBindingTables.hit.destroy();
     	geometryNodesBuffer.destroy();
+    	baseColorsBuffer.destroy();
         for (auto& buffer : uniformBuffers) {
             buffer.destroy();
         }
     }
 
+	// done
     void prepareCornellAssets()
     {
         filenames.clear();
@@ -123,6 +122,7 @@ public:
         cornell.loadFromFile(filenames, materials, vulkanDevice, queue);
     }
 
+	// done
 	void createAccelerationStructureBuffer(AccelerationStructure& accelerationStructure, VkAccelerationStructureBuildSizesInfoKHR buildSizeInfo)
     {
     	VkBufferCreateInfo bufferCreateInfo{};
@@ -147,6 +147,7 @@ public:
     /*
         Create the bottom level acceleration structure contains the scene's actual geometry (vertices, triangles)
     */
+	// done
     void createBottomLevelAccelerationStructure()
     {
     	// Use transform matrices from the glTF nodes
@@ -175,6 +176,7 @@ public:
 		std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRangeInfos{};
 		std::vector<VkAccelerationStructureBuildRangeInfoKHR*> pBuildRangeInfos{};
 		std::vector<GeometryNode> geometryNodes{};
+    	std::vector<glm::vec4> baseColors{};
 		for (auto mesh : cornell.meshes) {
 			if (mesh->indexCount > 0) {
 				VkDeviceOrHostAddressConstKHR vertexBufferDeviceAddress{};
@@ -210,12 +212,15 @@ public:
 				geometryNode.vertexBufferDeviceAddress = vertexBufferDeviceAddress.deviceAddress;
 				geometryNode.indexBufferDeviceAddress = indexBufferDeviceAddress.deviceAddress;
 				geometryNodes.push_back(geometryNode);
+
+				baseColors.push_back(mesh->material.baseColor);
 			}
 		}
 		for (auto& rangeInfo : buildRangeInfos) {
 			pBuildRangeInfos.push_back(&rangeInfo);
 		}
 
+    	// geometry node buffer
 		vks::Buffer stagingBuffer;
 
 		VK_CHECK_RESULT(vulkanDevice->createBuffer(
@@ -234,6 +239,26 @@ public:
 		vulkanDevice->copyBuffer(&stagingBuffer, &geometryNodesBuffer, queue);
 
 		stagingBuffer.destroy();
+
+    	// base color buffer
+    	vks::Buffer stagingBuffer2;
+
+    	VK_CHECK_RESULT(vulkanDevice->createBuffer(
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			&stagingBuffer2,
+			static_cast<uint32_t>(baseColors.size()) * sizeof(glm::vec4),
+			baseColors.data()));
+
+    	VK_CHECK_RESULT(vulkanDevice->createBuffer(
+			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			&baseColorsBuffer,
+			static_cast<uint32_t>(baseColors.size()) * sizeof(glm::vec4)));
+
+    	vulkanDevice->copyBuffer(&stagingBuffer2, &baseColorsBuffer, queue);
+
+    	stagingBuffer2.destroy();
 
 		// Get size info
 		VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo{};
@@ -291,6 +316,7 @@ public:
     /*
         The top level acceleration structure contains the scene's object instances
     */
+	// done
     void createTopLevelAccelerationStructure()
     {
         VkTransformMatrixKHR transformMatrix = {
@@ -391,6 +417,7 @@ public:
             \-----------/
 
     */
+	// done
     void createShaderBindingTables() {
         const uint32_t handleSize = rayTracingPipelineProperties.shaderGroupHandleSize;
         const uint32_t handleSizeAligned = vks::tools::alignedSize(rayTracingPipelineProperties.shaderGroupHandleSize, rayTracingPipelineProperties.shaderGroupHandleAlignment);
@@ -413,6 +440,7 @@ public:
     /*
         Create the descriptor sets used for the ray tracing dispatch
     */
+	// done
     void createDescriptorSets()
     {
         std::vector<VkDescriptorPoolSize> poolSizes = {
@@ -447,8 +475,7 @@ public:
             accelerationStructureWrite.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 
             VkDescriptorImageInfo storageImageDescriptor{ VK_NULL_HANDLE, storageImage.view, VK_IMAGE_LAYOUT_GENERAL };
-            VkDescriptorBufferInfo vertexBufferDescriptor{ scene.vertices.buffer, 0, VK_WHOLE_SIZE };
-            VkDescriptorBufferInfo indexBufferDescriptor{ scene.indices.buffer, 0, VK_WHOLE_SIZE };
+        	
 
             std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
                     // Binding 0: Top level acceleration structure
@@ -457,10 +484,10 @@ public:
                     vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &storageImageDescriptor),
                     // Binding 2: Uniform data
                     vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2, &uniformBuffers[i].descriptor),
-                    // Binding 3: Scene vertex buffer
-                    vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &vertexBufferDescriptor),
-                    // Binding 4: Scene index buffer
-                    vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &indexBufferDescriptor),
+            		// Binding 3: Geometry Nodes
+            		vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &geometryNodesBuffer.descriptor),
+            		// Binding 4: Base Colors
+            		vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &baseColorsBuffer.descriptor)
             };
             vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, VK_NULL_HANDLE);
         }
@@ -469,6 +496,7 @@ public:
     /*
         Create our ray tracing pipeline
     */
+	// done
     void createRayTracingPipeline()
     {
         std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
@@ -478,10 +506,10 @@ public:
                 vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 1),
                 // Binding 2: Uniform buffer
                 vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR, 2),
-                // Binding 3: Vertex buffer
-                vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 3),
-                // Binding 4: Index buffer
-                vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 4),
+        		// Binding 3: Geometry Nodes buffer
+        		vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, 3),
+        		// Binding 4: Base Colors buffer
+        		vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 4)
         };
 
         VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
@@ -501,7 +529,7 @@ public:
 
         // Ray generation group
         {
-            shaderStages.push_back(loadShader(getShadersPath() + "pathtracing/raygen.rgen.spv", VK_SHADER_STAGE_RAYGEN_BIT_KHR));
+            shaderStages.push_back(loadShader(getShadersPath() + "pathtracing/cbraygen.rgen.spv", VK_SHADER_STAGE_RAYGEN_BIT_KHR));
             // Pass recursion depth for reflections to ray generation shader via specialization constant
             shaderStages.back().pSpecializationInfo = &specializationInfo;
             VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
@@ -516,7 +544,7 @@ public:
 
         // Miss group
         {
-            shaderStages.push_back(loadShader(getShadersPath() + "pathtracing/miss.rmiss.spv", VK_SHADER_STAGE_MISS_BIT_KHR));
+            shaderStages.push_back(loadShader(getShadersPath() + "pathtracing/cbmiss.rmiss.spv", VK_SHADER_STAGE_MISS_BIT_KHR));
             VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
             shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
             shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
@@ -529,7 +557,7 @@ public:
 
         // Closest hit group
         {
-            shaderStages.push_back(loadShader(getShadersPath() + "pathtracing/closesthit.rchit.spv", VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR));
+            shaderStages.push_back(loadShader(getShadersPath() + "pathtracing/cbclosesthit.rchit.spv", VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR));
             VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
             shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
             shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
@@ -577,16 +605,16 @@ public:
         resized = false;
     }
 
+	// done
     void updateUniformBuffers()
     {
         uniformData.projInverse = glm::inverse(camera.matrices.perspective);
         uniformData.viewInverse = glm::inverse(camera.matrices.view);
-        uniformData.lightPos = glm::vec4(cos(glm::radians(timer * 360.0f)) * 40.0f, -20.0f + sin(glm::radians(timer * 360.0f)) * 20.0f, 25.0f + sin(glm::radians(timer * 360.0f)) * 5.0f, 0.0f);
-        // Pass the vertex size to the shader for unpacking vertices
-        uniformData.vertexSize = sizeof(vkglTF::Vertex);
+    	uniformData.frame++;
         memcpy(uniformBuffers[currentBuffer].mapped, &uniformData, sizeof(uniformData));
     }
 
+	// done
     void getEnabledFeatures()
     {
         // Enable features required for ray tracing using feature chaining via pNext
@@ -601,11 +629,19 @@ public:
         enabledAccelerationStructureFeatures.accelerationStructure = VK_TRUE;
         enabledAccelerationStructureFeatures.pNext = &enabledRayTracingPipelineFeatures;
 
-        deviceCreatepNextChain = &enabledAccelerationStructureFeatures;
+    	physicalDeviceDescriptorIndexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
+    	physicalDeviceDescriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+    	physicalDeviceDescriptorIndexingFeatures.runtimeDescriptorArray = VK_TRUE;
+    	physicalDeviceDescriptorIndexingFeatures.descriptorBindingVariableDescriptorCount = VK_TRUE;
+    	physicalDeviceDescriptorIndexingFeatures.pNext = &enabledAccelerationStructureFeatures;
+    	
+        deviceCreatepNextChain = &physicalDeviceDescriptorIndexingFeatures;
+
+    	enabledFeatures.samplerAnisotropy = VK_TRUE;
     }
 
-    
 
+	// done
     void prepare()
     {
         VulkanRaytracingSample::prepare();
@@ -623,6 +659,7 @@ public:
         prepared = true;
     }
 
+	
     void buildCommandBuffer()
     {
         if (resized)
@@ -704,11 +741,16 @@ public:
         VK_CHECK_RESULT(vkEndCommandBuffer(cmdBuffer));
     }
 
+	// done
     virtual void render()
     {
         if (!prepared)
             return;
         VulkanExampleBase::prepareFrame();
+    	if (camera.updated) {
+    		// If the camera's view has been updated we need to  reset the frame accumulation (which is used for transparent surfaces and anti-aliasing)
+    		uniformData.frame = -1;
+    	}
         updateUniformBuffers();
         buildCommandBuffer();
         VulkanExampleBase::submitFrame();

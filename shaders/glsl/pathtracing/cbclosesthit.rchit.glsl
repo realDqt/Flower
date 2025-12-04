@@ -17,8 +17,8 @@ struct GeometryNode{
     uint64_t vertexBufferDeviceAddress;
     uint64_t indexBufferDeviceAddress;
 };
-layout(binding = 4, set = 0) buffer GeometryNodes {GeometryNode nodes[];}geometryNodes;
-layout(binding = 5, set = 0) buffer BaseColors {vec4 colors[];} baseColors;
+layout(binding = 3, set = 0) buffer GeometryNodes {GeometryNode nodes[];}geometryNodes;
+layout(binding = 4, set = 0) buffer BaseColors {vec4 colors[];} baseColors;
 
 layout(buffer_reference, scalar) buffer Vertices {vec4 v[]; };
 layout(buffer_reference, scalar) buffer Indices {uint i[]; };
