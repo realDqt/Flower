@@ -35,7 +35,8 @@ public:
 		uint64_t indexBufferDeviceAddress;
 	};
 	vks::Buffer geometryNodesBuffer;
-	vks::Buffer baseColorsBuffer;
+	
+	vks::Buffer materialDataBuffer;
 	
 	vks::Buffer transformBuffer;
 	
@@ -78,7 +79,7 @@ public:
     	shaderBindingTables.miss.destroy();
     	shaderBindingTables.hit.destroy();
     	geometryNodesBuffer.destroy();
-    	baseColorsBuffer.destroy();
+    	materialDataBuffer.destroy();
         for (auto& buffer : uniformBuffers) {
             buffer.destroy();
         }
@@ -107,6 +108,7 @@ public:
         white.baseColor =  glm::vec4(0.725f, 0.71f, 0.68f, 1.0f);
         vkobj::Material light(vulkanDevice);
         light.baseColor =  glm::vec4(0.65f, 0.65f, 0.65f, 1.0f);
+    	light.emission = 8.0f * glm::vec3(0.747f+0.058f, 0.747f+0.258f, 0.747f) + 15.6f * glm::vec3(0.740f+0.287f,0.740f+0.160f,0.740f) + 18.4f * glm::vec3(0.737f+0.642f,0.737f+0.159f,0.737f);
 
         materials.push_back(white);
         materials.push_back(red);
@@ -185,7 +187,7 @@ public:
 		std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRangeInfos{};
 		std::vector<VkAccelerationStructureBuildRangeInfoKHR*> pBuildRangeInfos{};
 		std::vector<GeometryNode> geometryNodes{};
-    	std::vector<glm::vec4> baseColors{};
+    	std::vector<vkobj::MaterialData> materialDataVec{};
 		for (auto mesh : cornell.meshes) {
 			if (mesh->indexCount > 0) {
 				VkDeviceOrHostAddressConstKHR vertexBufferDeviceAddress{};
@@ -221,8 +223,8 @@ public:
 				geometryNode.vertexBufferDeviceAddress = vertexBufferDeviceAddress.deviceAddress;
 				geometryNode.indexBufferDeviceAddress = indexBufferDeviceAddress.deviceAddress;
 				geometryNodes.push_back(geometryNode);
-
-				baseColors.push_back(mesh->material.baseColor);
+				
+				materialDataVec.push_back(mesh->material.GetData());
 			}
 		}
 		for (auto& rangeInfo : buildRangeInfos) {
@@ -256,16 +258,16 @@ public:
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			&stagingBuffer2,
-			static_cast<uint32_t>(baseColors.size()) * sizeof(glm::vec4),
-			baseColors.data()));
+			static_cast<uint32_t>(materialDataVec.size()) * sizeof(vkobj::MaterialData),
+			materialDataVec.data()));
 
     	VK_CHECK_RESULT(vulkanDevice->createBuffer(
 			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			&baseColorsBuffer,
-			static_cast<uint32_t>(baseColors.size()) * sizeof(glm::vec4)));
+			&materialDataBuffer,
+			static_cast<uint32_t>(materialDataVec.size()) * sizeof(vkobj::MaterialData)));
 
-    	vulkanDevice->copyBuffer(&stagingBuffer2, &baseColorsBuffer, queue);
+    	vulkanDevice->copyBuffer(&stagingBuffer2, &materialDataBuffer, queue);
 
     	stagingBuffer2.destroy();
 
@@ -495,8 +497,8 @@ public:
                     vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2, &uniformBuffers[i].descriptor),
             		// Binding 3: Geometry Nodes
             		vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &geometryNodesBuffer.descriptor),
-            		// Binding 4: Base Colors
-            		vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &baseColorsBuffer.descriptor)
+            		// Binding 4: Material Data
+            		vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &materialDataBuffer.descriptor)
             };
             vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, VK_NULL_HANDLE);
         }

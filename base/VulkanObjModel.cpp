@@ -153,6 +153,12 @@ static void loadFromFileIntern(const std::string& filename,
     outMeshes.push_back(pMesh);
 }
 
+vkobj::MaterialData vkobj::Material::GetData()
+{
+    return {baseColor, emission, metallic, roughness};
+}
+
+
 void vkobj::Model::loadFromFile(const std::vector<std::string>& filenames, const std::vector<Material>& _materials, vks::VulkanDevice *device, VkQueue transferQueue) {
     assert(filenames.size() == _materials.size());
     

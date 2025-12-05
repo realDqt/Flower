@@ -50,12 +50,29 @@ namespace vkobj{
         }
     };
 
+    // 强制按 16 字节对齐
+    struct alignas(16) MaterialData {
+        glm::vec4 baseColor; // Offset: 0
+    
+        glm::vec3 emission;  // Offset: 16 (glm::vec3 是 12 字节)
+        float metallic;      // Offset: 28 (紧接在 vec3 后面)
+    
+        float roughness;     // Offset: 32
+    
+        // --------------------------------------------------------
+        // 重要：必须显式填充，补齐到 48 字节
+        // 目前使用了 16 + 12 + 4 + 4 = 36 字节
+        // 需要填充 48 - 36 = 12 字节 (3 个 float)
+        // --------------------------------------------------------
+        float _padding[3];   // Offset: 36 -> 48
+    };
 
     struct Material {
         vks::VulkanDevice* device = nullptr;
-        float metallic = 1.0f;
-        float roughness = 1.0f;
         glm::vec4 baseColor = glm::vec4(1.0f);
+        glm::vec3 emission = glm::vec3(0.0);
+        float metallic = 0.0f;
+        float roughness = 1.0f;
 
         VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 
@@ -64,6 +81,7 @@ namespace vkobj{
         Material(vks::VulkanDevice* device) : device(device) {}
         ~Material(){}
         void createDescriptorSet(VkDescriptorPool descriptorPool, VkDescriptorSetLayout descriptorSetLayout, uint32_t descriptorBindingFlags);
+        MaterialData GetData();
     };
 
 
@@ -98,7 +116,7 @@ namespace vkobj{
 
         std::vector<Mesh*> meshes;
         std::vector<Material> materials;
-
+        
         Model(){
             meshes.clear();
             materials.clear();

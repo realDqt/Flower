@@ -18,7 +18,14 @@ struct GeometryNode{
     uint64_t indexBufferDeviceAddress;
 };
 layout(binding = 3, set = 0) buffer GeometryNodes {GeometryNode nodes[];}geometryNodes;
-layout(binding = 4, set = 0) buffer BaseColors {vec4 colors[];} baseColors;
+
+struct Material{
+    vec4 baseColor;
+    vec3 emission;
+    float metallic;
+    float roughness;
+};
+layout(binding = 4, set = 0) buffer Materials {Material mats[];} materials;
 
 layout(buffer_reference, scalar) buffer Vertices {vec4 v[]; };
 layout(buffer_reference, scalar) buffer Indices {uint i[]; };
@@ -54,7 +61,7 @@ Triangle unpackTriangle(uint index){
 
 vec4 getBaseColor()
 {
-    return baseColors.colors[gl_GeometryIndexEXT];
+    return materials.mats[gl_GeometryIndexEXT].baseColor;
 }
 
 void main()
