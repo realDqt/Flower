@@ -152,9 +152,20 @@ public:
     		if (mesh->indexCount > 0) {
     			VkTransformMatrixKHR transformMatrix{};
     			auto m44 = glm::mat4(1.0f);
-    			m44 = glm::scale(m44, glm::vec3(0.1f, 0.1f, 0.01f));
-    			auto m34 = glm::mat3x4(m44);
-    			memcpy(&transformMatrix, (void*)&m34, sizeof(glm::mat3x4));
+    			float scale = 0.001f;
+    			glm::vec3 axisX = glm::vec3(1.0f, 0.0f, 0.0f);
+
+    			m44 = glm::rotate(m44, glm::radians(180.0f), axisX);
+    			m44 = glm::scale(m44, glm::vec3(scale));
+
+    			auto m44Trans = glm::transpose(m44);
+    			
+    			const float* rawData = reinterpret_cast<const float*>(&m44Trans);
+    			for (int i = 0; i < 3; ++i)
+    			{
+    				for (int j = 0; j < 4; ++j)
+    					transformMatrix.matrix[i][j] = rawData[i * 4 + j];
+    			}
     			transformMatrices.push_back(transformMatrix);
     		}
     	}
