@@ -59,9 +59,19 @@ Triangle unpackTriangle(uint index){
     return tri;
 }
 
+Material GetMat()
+{
+    return materials.mats[gl_GeometryIndexEXT];
+}
+
 vec4 getBaseColor()
 {
-    return materials.mats[gl_GeometryIndexEXT].baseColor;
+    return GetMat().baseColor;
+}
+
+vec3 getEmission()
+{
+    return GetMat().emission;
 }
 
 void main()
@@ -70,7 +80,7 @@ void main()
     
     GeometryNode geometryNode = geometryNodes.nodes[gl_GeometryIndexEXT];
     
-    vec3 color = getBaseColor().rgb;
+    vec3 color = getBaseColor().rgb + getEmission();
     
     hitValue = color;
 }

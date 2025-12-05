@@ -52,19 +52,11 @@ namespace vkobj{
 
     // 强制按 16 字节对齐
     struct alignas(16) MaterialData {
-        glm::vec4 baseColor; // Offset: 0
-    
-        glm::vec3 emission;  // Offset: 16 (glm::vec3 是 12 字节)
-        float metallic;      // Offset: 28 (紧接在 vec3 后面)
-    
-        float roughness;     // Offset: 32
-    
-        // --------------------------------------------------------
-        // 重要：必须显式填充，补齐到 48 字节
-        // 目前使用了 16 + 12 + 4 + 4 = 36 字节
-        // 需要填充 48 - 36 = 12 字节 (3 个 float)
-        // --------------------------------------------------------
-        float _padding[3];   // Offset: 36 -> 48
+        glm::vec4 baseColor = glm::vec4(1.0f);
+        glm::vec3 emission = glm::vec3(0.0f);
+        float metallic = 0.0f;     
+        float roughness = 1.0f;     
+        float _padding[3] = {0.0f, 0.0f, 0.0f}; // 注释掉也ok，因为struct已经强制对齐   
     };
 
     struct Material {

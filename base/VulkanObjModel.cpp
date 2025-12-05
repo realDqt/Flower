@@ -66,6 +66,7 @@ vkobj::Material::Material(const Material& rhs)
     metallic = rhs.metallic;
     roughness = rhs.roughness;
     baseColor = rhs.baseColor;
+    emission = rhs.emission;
     descriptorSet = rhs.descriptorSet;
 }
 
@@ -155,7 +156,13 @@ static void loadFromFileIntern(const std::string& filename,
 
 vkobj::MaterialData vkobj::Material::GetData()
 {
-    return {baseColor, emission, metallic, roughness};
+    MaterialData materialData{
+        .baseColor = baseColor,
+        .emission = emission,
+        .metallic = metallic,
+        .roughness = roughness};
+    
+    return materialData;
 }
 
 
