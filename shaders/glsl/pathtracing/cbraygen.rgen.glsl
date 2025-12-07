@@ -11,7 +11,8 @@ layout(binding = 2, set = 0) uniform CameraProperties{
     uint frame;
 } cam;
 
-layout(location = 0) rayPayloadEXT vec3 hitValue;
+#include "cbcommon.glsl"
+layout(location = 0) rayPayloadEXT RayPayload hitValue;
 
 // Tiny Encryption Algorithm
 // By Fahad Zafar, Marc Olano and Aaron Curtis, see https://www.highperformancegraphics.org/previous/www_2010/media/GPUAlgorithms/HPG2010_GPUAlgorithms_Zafar.pdf
@@ -63,15 +64,19 @@ void main()
 
     float tmin = 0.001;
     float tmax = 10000.0;
-    hitValue = vec3(0.0);
+    hitValue.mat.baseColor = vec4(0.0, 0.0, 0.0, 1.0);
     traceRayEXT(topLevelAS, gl_RayFlagsNoneEXT, 0xff, 0, 0, 0, origin.xyz, tmin, direction.xyz, tmax, 0);
 
     // de-noising
+    vec3 normal01 = getNormal01(hitValue.normal);
+    vec3 hitColor = hitValue.mat.baseColor.rgb;
+    if(hitColor == vec3(0.0)) normal01 = vec3(0.0);
+    
     if(cam.frame > 0){
         float a = 1.0f / float(cam.frame + 1);
         vec3 oldColor = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
-        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(oldColor, hitValue, a), 1.0f));
+        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(oldColor, hitColor, a), 1.0f));
     }else{
-        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue, 1.0f));
+        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitColor, 1.0f));
     }
 }

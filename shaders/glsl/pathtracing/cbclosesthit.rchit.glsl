@@ -7,7 +7,8 @@
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-layout(location = 0) rayPayloadInEXT vec3 hitValue;
+#include "cbcommon.glsl"
+layout(location = 0) rayPayloadInEXT RayPayload hitValue;
 hitAttributeEXT vec2 attribs;
 
 layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
@@ -19,12 +20,7 @@ struct GeometryNode{
 };
 layout(binding = 3, set = 0) buffer GeometryNodes {GeometryNode nodes[];}geometryNodes;
 
-struct Material{
-    vec4 baseColor;
-    vec3 emission;
-    float metallic;
-    float roughness;
-};
+
 layout(binding = 4, set = 0) buffer Materials {Material mats[];} materials;
 
 layout(buffer_reference, scalar) buffer Vertices {vec4 v[]; };
@@ -59,19 +55,19 @@ Triangle unpackTriangle(uint index){
     return tri;
 }
 
-Material GetMat()
+Material getMat()
 {
     return materials.mats[gl_GeometryIndexEXT];
 }
 
 vec4 getBaseColor()
 {
-    return GetMat().baseColor;
+    return getMat().baseColor;
 }
 
 vec3 getEmission()
 {
-    return GetMat().emission;
+    return getMat().emission;
 }
 
 void main()
@@ -82,5 +78,9 @@ void main()
     
     vec3 color = getBaseColor().rgb + getEmission();
     
-    hitValue = color;
+    hitValue.mat = getMat();
+    vec3 worldNormal = normalize(tri.normal * mat3(gl_WorldToObjectEXT)); // m^(-1)^T
+    hitValue.normal = worldNormal;
+    hitValue.pos = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT;
+    hitValue.dis = gl_HitTEXT;
 }
