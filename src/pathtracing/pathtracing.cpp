@@ -30,6 +30,12 @@ public:
     	uint32_t frame = 0;
     } uniformData;
 
+	struct LightData
+	{
+		glm::mat4 objectToWorld;
+		int lightGeometryIndex;
+	} lightData;
+
 	struct GeometryNode {
 		uint64_t vertexBufferDeviceAddress;
 		uint64_t indexBufferDeviceAddress;
@@ -39,6 +45,8 @@ public:
 	vks::Buffer materialDataBuffer;
 	
 	vks::Buffer transformBuffer;
+
+	vks::Buffer lightDataBuffer;
 	
     std::array<vks::Buffer, maxConcurrentFrames> uniformBuffers;
 
@@ -80,6 +88,7 @@ public:
     	shaderBindingTables.hit.destroy();
     	geometryNodesBuffer.destroy();
     	materialDataBuffer.destroy();
+    	lightDataBuffer.destroy();
         for (auto& buffer : uniformBuffers) {
             buffer.destroy();
         }
@@ -116,6 +125,8 @@ public:
         materials.push_back(green);
         materials.push_back(white);
         materials.push_back(white);
+
+    	lightData.lightGeometryIndex = 2;
         
         // 加载obj
         cornell.loadFromFile(filenames, materials, vulkanDevice, queue);
@@ -160,6 +171,7 @@ public:
     			m44 = glm::rotate(m44, glm::radians(180.0f), axisX);
     			m44 = glm::scale(m44, glm::vec3(scale));
 
+    			lightData.objectToWorld = m44;
     			auto m44Trans = glm::transpose(m44);
     			
     			const float* rawData = reinterpret_cast<const float*>(&m44Trans);
@@ -270,6 +282,26 @@ public:
     	vulkanDevice->copyBuffer(&stagingBuffer2, &materialDataBuffer, queue);
 
     	stagingBuffer2.destroy();
+
+    	// light data buffer
+    	vks::Buffer stagingBuffer3;
+
+    	VK_CHECK_RESULT(vulkanDevice->createBuffer(
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			&stagingBuffer3,
+			sizeof(lightData),
+			&lightData));
+
+    	VK_CHECK_RESULT(vulkanDevice->createBuffer(
+			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			&lightDataBuffer,
+			sizeof(lightData)));
+
+    	vulkanDevice->copyBuffer(&stagingBuffer3, &lightDataBuffer, queue);
+
+    	stagingBuffer3.destroy();
 
 		// Get size info
 		VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo{};
@@ -498,7 +530,9 @@ public:
             		// Binding 3: Geometry Nodes
             		vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &geometryNodesBuffer.descriptor),
             		// Binding 4: Material Data
-            		vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &materialDataBuffer.descriptor)
+            		vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &materialDataBuffer.descriptor),
+            		// Binding 5: Light Data Buffer
+            		vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5, &lightDataBuffer.descriptor)
             };
             vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, VK_NULL_HANDLE);
         }
@@ -518,9 +552,11 @@ public:
                 // Binding 2: Uniform buffer
                 vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR, 2),
         		// Binding 3: Geometry Nodes buffer
-        		vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, 3),
+        		vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_RAYGEN_BIT_KHR, 3),
         		// Binding 4: Base Colors buffer
-        		vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 4)
+        		vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 4),
+        		// Binding 5: Light Data
+        		vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 5)
         };
 
         VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);

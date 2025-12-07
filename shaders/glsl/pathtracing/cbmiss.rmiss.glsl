@@ -9,4 +9,5 @@ layout(location = 0) rayPayloadInEXT RayPayload hitValue;
 void main()
 {
     hitValue.mat.baseColor = vec4(0.0, 0.0, 0.0, 1.0);
+    hitValue.dis = -1.0f;
 }
