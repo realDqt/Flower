@@ -139,6 +139,22 @@ vec3 cosineSampleHemisphere(vec3 normal, inout uint seed)
     return toWorld(vec3(x, y, z), normal);
 }
 
+void buildOrthonormalBasis(vec3 n, out vec3 t, out vec3 b)
+{
+    float sign = n.z >= 0.0 ? 1.0 : -1.0;
+    float a = -1.0 / (sign + n.z);
+    float b_val = n.x * n.y * a;
+
+    t = vec3(1.0 + sign * n.x * n.x * a, sign * b_val, -sign * n.x);
+    b = vec3(b_val, sign + n.y * n.y * a, -n.y);
+}
+
+vec3 sampleSpecular(vec3 normal, vec3 incidentDir)
+{
+    vec3 ref = reflect(incidentDir, normal);
+    return ref;
+}
+
 // 计算三角形面积
 // 原理：三角形面积等于两边叉积模长的一半
 float cacTriangleArea(vec3 worldPositions[3])
@@ -176,4 +192,9 @@ vec3 uniformSampleTriangle(vec3 worldPositions[3], inout uint seed)
     worldPositions[2] * w);
 
     return samplePoint;
+}
+
+bool nearEqual(float a, float b, float eps)
+{
+    return abs(a - b) < eps;
 }

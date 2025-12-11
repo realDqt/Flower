@@ -118,13 +118,17 @@ public:
         vkobj::Material light(vulkanDevice);
         light.baseColor =  glm::vec4(0.65f, 0.65f, 0.65f, 1.0f);
     	light.emission = 8.0f * glm::vec3(0.747f+0.058f, 0.747f+0.258f, 0.747f) + 15.6f * glm::vec3(0.740f+0.287f,0.740f+0.160f,0.740f) + 18.4f * glm::vec3(0.737f+0.642f,0.737f+0.159f,0.737f);
+    	vkobj::Material specular(vulkanDevice);
+    	specular.baseColor = glm::vec4(0.725f, 0.71f, 0.68f, 1.0f);
+    	specular.metallic = 1.0f;
+    	specular.roughness = 0.0f;
 
         materials.push_back(white);
         materials.push_back(red);
         materials.push_back(light);
         materials.push_back(green);
         materials.push_back(white);
-        materials.push_back(white);
+        materials.push_back(specular);
 
     	lightData.lightGeometryIndex = 2;
         
