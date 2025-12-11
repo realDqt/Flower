@@ -162,7 +162,7 @@ void main()
 
     vec3 accumulatedColor = vec3(0.0);
     const int SPP = 1;
-    const int BOUNCE = 32;
+    const int BOUNCE = 128;
 
     for(int i = 0; i < SPP; ++i)
     {
