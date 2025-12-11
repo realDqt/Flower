@@ -3,6 +3,7 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require // uint64_t
 
 #define M_PI 3.141592653589793f
+#define RUSSIAN_ROULETTE 0.8f
 
 struct Material{
     vec4 baseColor;
@@ -113,7 +114,7 @@ float rnd(inout uint previous)
     return (float(lcg(previous)) / float(0x01000000));
 }
 
-vec3 uniformSample(vec3 wi, vec3 normal, inout uint seed)
+vec3 uniformSampleHemisphere(vec3 wi, vec3 normal, inout uint seed)
 {
     float x_1 = rnd(seed);
     float x_2 = rnd(seed);
