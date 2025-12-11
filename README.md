@@ -8,6 +8,7 @@ A hardware-accelerated ray tracing engine using Vulkan
 - Monte Carlo Path Tracing
 - NEE
 - Cosine-Weighted Importance Sampling
+- Diffuse Material
 
 ![1spp32bounce](./demos/1spp32bounce.png)
 

@@ -161,7 +161,7 @@ void main()
     uint seed = getSeed();
 
     vec3 accumulatedColor = vec3(0.0);
-    const int SPP = 4;
+    const int SPP = 1;
     const int BOUNCE = 32;
 
     for(int i = 0; i < SPP; ++i)
