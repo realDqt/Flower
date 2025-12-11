@@ -77,9 +77,8 @@ uint getSeed()
     return seed;
 }
 
-Ray getRayFromCamera(float tmin, float tmax)
+Ray getRayFromCamera(float tmin, float tmax, inout uint seed)
 {
-    uint seed = getSeed();
 
     float r1 = rnd(seed);
     float r2 = rnd(seed);
@@ -114,7 +113,7 @@ vec3 cacDirectLight(vec3 pos, vec3 normal, vec3 wo, inout uint seed, Material ma
     float lightDist = length(x - p);
     
     uint rayFlags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT;
-    traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, p, 0.01, ws, lightDist - 0.01, 0);
+    traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, p, 0.01, ws, lightDist - 0.0001, 0);
     if(hitValue.dis < 0.0f){
         // p对光源x可见
         vec3 f_r = evalDiffuseBRDF(ws, wo, normal, mat);
@@ -128,10 +127,10 @@ vec3 cacDirectLight(vec3 pos, vec3 normal, vec3 wo, inout uint seed, Material ma
 
 vec3 pathTracing(int maxBounce)
 {
-    Ray ray = getRayFromCamera(0.001, 10000.0);
+    uint seed = getSeed();
+    Ray ray = getRayFromCamera(0.001, 10000.0, seed);
     uint rayFlags = gl_RayFlagsOpaqueEXT;
     vec3 totalRadiance = vec3(0.0);
-    uint seed = getSeed();
     float divFactor = 1.0f;
     
     for(int i = 0; i < maxBounce; ++i){
@@ -160,23 +159,6 @@ vec3 pathTracing(int maxBounce)
 
 void main()
 {
-    /*
-    Ray ray = getRayFromCamera(0.001, 10000.0);
-    traceRayEXT(topLevelAS, gl_RayFlagsNoneEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
-    vec3 normal01 = getNormal01(hitValue.worldNormal);
-    vec3 hitColor = hitValue.mat.baseColor.rgb;
-    */
-    
     vec3 pathTracingColor = pathTracing(32);
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(pathTracingColor, 1.0f));
-    
-    /*
-    if(cam.frame > 0){
-        float a = 1.0f / float(cam.frame + 1);
-        vec3 oldColor = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
-        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(oldColor, pathTracingColor, a), 1.0f));
-    }else{
-        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(pathTracingColor, 1.0f));
-    }
-    */
 }

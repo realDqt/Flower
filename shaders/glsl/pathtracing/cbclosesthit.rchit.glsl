@@ -32,6 +32,7 @@ Triangle unpackTriangle(uint index){
 
     vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
     tri.normal = normalize(cross(tri.vertices[1].pos - tri.vertices[0].pos, tri.vertices[2].pos - tri.vertices[1].pos));
+    if(gl_GeometryIndexEXT == 0)tri.normal = -tri.normal; // hack
     return tri;
 }
 
@@ -50,15 +51,28 @@ vec3 getEmission()
     return getMat().emission;
 }
 
+vec3 cacWorldPosByInterpolation(Triangle tri)
+{
+    const vec3 barycentrics = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
+    vec3 p0 = tri.vertices[0].pos;
+    vec3 p1 = tri.vertices[1].pos;
+    vec3 p2 = tri.vertices[2].pos;
+    vec3 localPos = p0 * barycentrics.x + p1 * barycentrics.y + p2 * barycentrics.z;
+    return vec3(gl_ObjectToWorldEXT * vec4(localPos, 1.0));
+}
+
+vec3 cacWorldPosByRayHitInfo()
+{
+    return gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT;
+}
+
 void main()
 {
     Triangle tri = unpackTriangle(gl_PrimitiveID);
     
-    vec3 color = getBaseColor().rgb + getEmission();
-    
     hitValue.mat = getMat();
     vec3 worldNormal = normalize(tri.normal * mat3(gl_WorldToObjectEXT)); // m^(-1)^T
     hitValue.worldNormal = worldNormal;
-    hitValue.worldPos = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT;
+    hitValue.worldPos = cacWorldPosByRayHitInfo();
     hitValue.dis = gl_HitTEXT;
 }

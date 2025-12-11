@@ -135,11 +135,14 @@ public:
 	// done
 	void createAccelerationStructureBuffer(AccelerationStructure& accelerationStructure, VkAccelerationStructureBuildSizesInfoKHR buildSizeInfo)
     {
+    	// create buffer
     	VkBufferCreateInfo bufferCreateInfo{};
     	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     	bufferCreateInfo.size = buildSizeInfo.accelerationStructureSize;
     	bufferCreateInfo.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
     	VK_CHECK_RESULT(vkCreateBuffer(device, &bufferCreateInfo, nullptr, &accelerationStructure.buffer));
+
+    	// allocate memory
     	VkMemoryRequirements memoryRequirements{};
     	vkGetBufferMemoryRequirements(device, accelerationStructure.buffer, &memoryRequirements);
     	VkMemoryAllocateFlagsInfo memoryAllocateFlagsInfo{};
@@ -151,6 +154,8 @@ public:
     	memoryAllocateInfo.allocationSize = memoryRequirements.size;
     	memoryAllocateInfo.memoryTypeIndex = vulkanDevice->getMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     	VK_CHECK_RESULT(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &accelerationStructure.memory));
+
+    	// bind buffer and memory
     	VK_CHECK_RESULT(vkBindBufferMemory(device, accelerationStructure.buffer, accelerationStructure.memory, 0));
     }
 	
