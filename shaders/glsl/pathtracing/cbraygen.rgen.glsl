@@ -125,9 +125,8 @@ vec3 cacDirectLight(vec3 pos, vec3 normal, vec3 wo, inout uint seed, Material ma
     return L_dir;
 }
 
-vec3 pathTracing(int maxBounce)
+vec3 pathTracing(int maxBounce, inout uint seed)
 {
-    uint seed = getSeed();
     Ray ray = getRayFromCamera(0.001, 10000.0, seed);
     uint rayFlags = gl_RayFlagsOpaqueEXT;
     vec3 totalRadiance = vec3(0.0);
@@ -159,6 +158,18 @@ vec3 pathTracing(int maxBounce)
 
 void main()
 {
-    vec3 pathTracingColor = pathTracing(32);
-    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(pathTracingColor, 1.0f));
+    uint seed = getSeed();
+
+    vec3 accumulatedColor = vec3(0.0);
+    const int SPP = 4;
+    const int BOUNCE = 32;
+
+    for(int i = 0; i < SPP; ++i)
+    {
+        accumulatedColor += pathTracing(BOUNCE, seed);
+    }
+    
+    vec3 finalColor = accumulatedColor / float(SPP);
+
+    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.0f));
 }
