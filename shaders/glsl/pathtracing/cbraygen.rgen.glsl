@@ -143,10 +143,10 @@ vec3 pathTracing(int maxBounce, inout uint seed)
             
             totalRadiance += radiance / divFactor;
             ray.origin = hitValue.worldPos;
-            if(nearEqual(hitValue.mat.metallic, 1.0, 1e-5f)){
-                vec3 correctNormal = hitValue.worldNormal;
-                correctNormal.x *= -1.0f;
-                ray.direction = sampleSpecular(correctNormal, ray.direction);
+            if(nearEqual(hitValue.mat.metallic, 1.0, 0.00001f)){
+                vec3 reflectNormal = hitValue.worldNormal;
+                reflectNormal.x = -reflectNormal.x;
+                ray.direction = sampleSpecular(reflectNormal, ray.direction);
             }else{
                 ray.direction = cosineSampleHemisphere(hitValue.worldNormal, seed);
             }
