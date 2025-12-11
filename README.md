@@ -15,3 +15,4 @@ A hardware-accelerated ray tracing engine using Vulkan
 
 
 
+![specular](./demos/specular.png)

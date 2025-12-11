@@ -144,9 +144,11 @@ vec3 pathTracing(int maxBounce, inout uint seed)
             totalRadiance += radiance / divFactor;
             ray.origin = hitValue.worldPos;
             if(nearEqual(hitValue.mat.metallic, 1.0, 1e-5f)){
-                ray.direction = sampleSpecular(hitValue.worldNormal, ray.direction);
+                vec3 correctNormal = hitValue.worldNormal;
+                correctNormal.x *= -1.0f;
+                ray.direction = sampleSpecular(correctNormal, ray.direction);
             }else{
-                ray.direction = cosineSampleHemisphere( hitValue.worldNormal, seed);
+                ray.direction = cosineSampleHemisphere(hitValue.worldNormal, seed);
             }
             divFactor *= RUSSIAN_ROULETTE;
         }else{
