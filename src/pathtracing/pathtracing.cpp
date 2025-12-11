@@ -64,7 +64,7 @@ public:
     // This sample is derived from an extended base class that saves most of the ray tracing setup boiler plate
     CornellBox() : VulkanRaytracingSample()
     {
-        title = "Ray tracing reflections";
+        title = "Path Tracing";
         timerSpeed *= 100.0f;
         camera.rotationSpeed *= 0.25f;
         camera.type = Camera::CameraType::firstperson;
