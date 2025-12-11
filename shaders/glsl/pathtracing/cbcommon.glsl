@@ -55,7 +55,7 @@ bool hasEmission(Material mat)
 
 vec3 getTriNormalFromTriPositions(vec3 triPositions[3])
 {
-    return normalize(cross(triPositions[1] - triPositions[0], triPositions[2] - triPositions[0]));
+    return normalize(cross(triPositions[1] - triPositions[0], triPositions[2] - triPositions[1]));
 }
 
 vec3 evalDiffuseBRDF(vec3 wi, vec3 wo, vec3 normal, Material mat)
@@ -114,7 +114,7 @@ float rnd(inout uint previous)
     return (float(lcg(previous)) / float(0x01000000));
 }
 
-vec3 uniformSampleHemisphere(vec3 wi, vec3 normal, inout uint seed)
+vec3 uniformSampleHemisphere(vec3 normal, inout uint seed)
 {
     float x_1 = rnd(seed);
     float x_2 = rnd(seed);
@@ -122,6 +122,21 @@ vec3 uniformSampleHemisphere(vec3 wi, vec3 normal, inout uint seed)
     float r = sqrt(1.0f - z * z), phi = 2.0f * M_PI * x_2;
     vec3 localRay = vec3(r * cos(phi), r * sin(phi), z);
     return toWorld(localRay, normal);
+}
+
+vec3 cosineSampleHemisphere(vec3 normal, inout uint seed)
+{
+    float r1 = rnd(seed);
+    float r2 = rnd(seed);
+    float r = sqrt(r1);
+    float theta = 2.0 * M_PI * r2;
+
+    // 在切线空间生成射线
+    float x = r * cos(theta);
+    float y = r * sin(theta);
+    float z = sqrt(max(0.0, 1.0 - x*x - y*y)); // Z 轴对齐法线
+
+    return toWorld(vec3(x, y, z), normal);
 }
 
 // 计算三角形面积

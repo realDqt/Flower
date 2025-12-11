@@ -101,25 +101,27 @@ Ray getRayFromCamera(float tmin, float tmax)
     return ray;
 }
 
-vec3 cacDirectLight(vec3 pos, vec3 normal, vec3 wo, Material mat)
+vec3 cacDirectLight(vec3 pos, vec3 normal, vec3 wo, inout uint seed, Material mat)
 {
     // 计算pos处，沿着wo方向的直接光照
     vec3 L_dir = vec3(0.0);
     float pdf_light = 0;
     LightSampleRes lightSampleRes;
-    uint seed = getSeed();
     sampleLight(seed, lightSampleRes, pdf_light);
     vec3 p = pos;
     vec3 x = lightSampleRes.pos;
     vec3 ws = normalize(x - p);
+    float lightDist = length(x - p);
     
-    uint rayFlags = gl_RayFlagsOpaqueEXT;
-    traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, p, 0.001, ws, 10000.0, 0);
-    if(hitValue.dis > 0.0f){
+    uint rayFlags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT;
+    traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, p, 0.01, ws, lightDist - 0.01, 0);
+    if(hitValue.dis < 0.0f){
         // p对光源x可见
         vec3 f_r = evalDiffuseBRDF(ws, wo, normal, mat);
         float distance2 = dot(x - p, x - p);
-        L_dir = hitValue.mat.emission * f_r * dot(ws, normal) * dot(-ws, hitValue.worldNormal) / distance2 / pdf_light;
+        float cosThetaLight = max(0.0, dot(-ws, lightSampleRes.normal));
+        float cosThetaObj = max(0.0, dot(ws, normal));
+        L_dir = lightSampleRes.emit * f_r * cosThetaObj * cosThetaLight / distance2 / pdf_light;
     }
     return L_dir;
 }
@@ -131,6 +133,7 @@ vec3 pathTracing(int maxBounce)
     vec3 totalRadiance = vec3(0.0);
     uint seed = getSeed();
     float divFactor = 1.0f;
+    
     for(int i = 0; i < maxBounce; ++i){
         traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
         if(hitValue.dis > 0.0f) {
@@ -138,12 +141,13 @@ vec3 pathTracing(int maxBounce)
                 totalRadiance += hitValue.mat.emission / divFactor;
                 break;
             }
-            vec3 radiance = cacDirectLight(hitValue.worldPos, hitValue.worldNormal, -ray.direction, hitValue.mat);
+            vec3 radiance = cacDirectLight(hitValue.worldPos, hitValue.worldNormal, -ray.direction, seed, hitValue.mat);
             
             totalRadiance += radiance / divFactor;
-            divFactor *= RUSSIAN_ROULETTE;
             ray.origin = hitValue.worldPos;
-            ray.direction = uniformSampleHemisphere(-ray.direction, hitValue.worldNormal, seed);
+            ray.direction = cosineSampleHemisphere( hitValue.worldNormal, seed);
+
+            divFactor *= RUSSIAN_ROULETTE;
         }else{
             break;
         }
@@ -156,16 +160,17 @@ vec3 pathTracing(int maxBounce)
 
 void main()
 {
+    /*
     Ray ray = getRayFromCamera(0.001, 10000.0);
-    hitValue.mat.baseColor = vec4(0.0, 0.0, 0.0, 1.0);
     traceRayEXT(topLevelAS, gl_RayFlagsNoneEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
-
-    // de-noising
     vec3 normal01 = getNormal01(hitValue.worldNormal);
     vec3 hitColor = hitValue.mat.baseColor.rgb;
+    */
     
     vec3 pathTracingColor = pathTracing(32);
+    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(pathTracingColor, 1.0f));
     
+    /*
     if(cam.frame > 0){
         float a = 1.0f / float(cam.frame + 1);
         vec3 oldColor = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
@@ -173,4 +178,5 @@ void main()
     }else{
         imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(pathTracingColor, 1.0f));
     }
+    */
 }
