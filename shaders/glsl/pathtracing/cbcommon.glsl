@@ -114,17 +114,18 @@ float rnd(inout uint previous)
     return (float(lcg(previous)) / float(0x01000000));
 }
 
-vec3 uniformSampleHemisphere(vec3 normal, inout uint seed)
+void uniformSampleHemisphere(vec3 normal, inout uint seed, out vec3 sampleDir, out float pdf)
 {
     float x_1 = rnd(seed);
     float x_2 = rnd(seed);
     float z = abs(1.0f - 2.0f * x_1);
     float r = sqrt(1.0f - z * z), phi = 2.0f * M_PI * x_2;
     vec3 localRay = vec3(r * cos(phi), r * sin(phi), z);
-    return toWorld(localRay, normal);
+    sampleDir =  toWorld(localRay, normal);
+    pdf = 1.0f / 2.0f / M_PI;
 }
 
-vec3 cosineSampleHemisphere(vec3 normal, inout uint seed)
+void cosineSampleHemisphere(vec3 normal, inout uint seed, out vec3 sampleDir, out float pdf)
 {
     float r1 = rnd(seed);
     float r2 = rnd(seed);
@@ -136,7 +137,8 @@ vec3 cosineSampleHemisphere(vec3 normal, inout uint seed)
     float y = r * sin(theta);
     float z = sqrt(max(0.0, 1.0 - x*x - y*y)); // Z 轴对齐法线
 
-    return toWorld(vec3(x, y, z), normal);
+   sampleDir = toWorld(vec3(x, y, z), normal);
+    pdf = dot(sampleDir, normal) / M_PI;
 }
 
 void buildOrthonormalBasis(vec3 n, out vec3 t, out vec3 b)
@@ -149,10 +151,10 @@ void buildOrthonormalBasis(vec3 n, out vec3 t, out vec3 b)
     b = vec3(b_val, sign + n.y * n.y * a, -n.y);
 }
 
-vec3 sampleSpecular(vec3 normal, vec3 incidentDir)
+void sampleSpecular(vec3 normal, vec3 incidentDir, out vec3 sampleDir, out float pdf)
 {
-    vec3 ref = reflect(incidentDir, normal);
-    return ref;
+    sampleDir = reflect(incidentDir, normal);
+    pdf = 1.0f;
 }
 
 // 计算三角形面积

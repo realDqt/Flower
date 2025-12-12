@@ -143,14 +143,18 @@ vec3 pathTracing(int maxBounce, inout uint seed)
             
             totalRadiance += radiance / divFactor;
             ray.origin = hitValue.worldPos;
+            // sampling
+            float pdf;
+            vec3 sampleDir;
+            vec3 sampleNormal = hitValue.worldNormal;
+            sampleNormal.x = -sampleNormal.x; // hack
             if(nearEqual(hitValue.mat.metallic, 1.0, 0.00001f)){
-                vec3 reflectNormal = hitValue.worldNormal;
-                reflectNormal.x = -reflectNormal.x;
-                ray.direction = sampleSpecular(reflectNormal, ray.direction);
+                sampleSpecular(sampleNormal, ray.direction, sampleDir, pdf);
             }else{
-                ray.direction = cosineSampleHemisphere(hitValue.worldNormal, seed);
+                cosineSampleHemisphere(sampleNormal, seed, sampleDir, pdf);
             }
-            divFactor *= RUSSIAN_ROULETTE;
+            ray.direction = sampleDir;
+            divFactor *= RUSSIAN_ROULETTE * pdf;
         }else{
             break;
         }

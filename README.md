@@ -11,7 +11,7 @@ A hardware-accelerated ray tracing engine using Vulkan
 - Diffuse Material
 - Specular Material
 
-![1spp32bounce](./demos/1spp32bounce.png)
+![1spp128bounce](./demos/1spp128bounce.png)
 
 
 

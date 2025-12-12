@@ -15,6 +15,11 @@ layout(binding = 3, set = 0) buffer GeometryNodes {GeometryNode nodes[];}geometr
 
 layout(binding = 4, set = 0) buffer Materials {Material mats[];} materials;
 
+bool neadToReverseNormal()
+{
+    return gl_GeometryIndexEXT == 0 || gl_GeometryIndexEXT == 4 || gl_GeometryIndexEXT == 5;
+}
+
 Triangle unpackTriangle(uint index){
     Triangle tri;
     const uint triIndex = index * 3;
@@ -32,7 +37,7 @@ Triangle unpackTriangle(uint index){
 
     vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
     tri.normal = normalize(cross(tri.vertices[1].pos - tri.vertices[0].pos, tri.vertices[2].pos - tri.vertices[1].pos));
-    if(gl_GeometryIndexEXT == 0)tri.normal = -tri.normal; // hack
+    if(neadToReverseNormal())tri.normal = -tri.normal; // hack
     return tri;
 }
 
@@ -73,6 +78,7 @@ void main()
     hitValue.mat = getMat();
     vec3 worldNormal = normalize(tri.normal * mat3(gl_WorldToObjectEXT)); // m^(-1)^T
     hitValue.worldNormal = worldNormal;
-    hitValue.worldPos = cacWorldPosByRayHitInfo();
+    hitValue.worldPos = cacWorldPosByRayHitInfo(); // 正常
+    //hitValue.worldPos = cacWorldPosByInterpolation(tri); // 除了光源，全黑bug
     hitValue.dis = gl_HitTEXT;
 }
