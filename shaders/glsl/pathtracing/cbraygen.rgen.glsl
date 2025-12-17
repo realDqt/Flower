@@ -71,6 +71,23 @@ void sampleLight(inout uint seed, out LightSampleRes sampleRes, out float pdf)
     uniformSampleLight(tri0Positions, tri1Positions, seed, sampleRes, pdf);
 }
 
+// 幂启发式 (Power Heuristic): w1 = p1^2 / (p1^2 + p2^2)
+float powerHeuristic(float a, float b)
+{
+    float a2 = a * a;
+    float b2 = b * b;
+    return a2 / (max(a2 + b2, 1e-6f)); // 防止除零
+}
+
+// 获取光源的总面积 (用于反推 PDF)
+float getLightArea()
+{
+    vec3 t0[3];
+    vec3 t1[3];
+    unpackLightWorldPositions(t0, t1);
+    return cacTriangleArea(t0) + cacTriangleArea(t1);
+}
+
 uint getSeed()
 {
     uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, cam.frame);
@@ -102,11 +119,13 @@ Ray getRayFromCamera(float tmin, float tmax, inout uint seed)
 
 vec3 cacDirectLight(vec3 pos, vec3 normal, vec3 wo, inout uint seed, Material mat)
 {
+    if (isSpecularMat(hitValue.mat)) return vec3(0.0);
+    
     // 计算pos处，沿着wo方向的直接光照
     vec3 L_dir = vec3(0.0);
-    float pdf_light = 0;
+    float pdfLightArea = 0;
     LightSampleRes lightSampleRes;
-    sampleLight(seed, lightSampleRes, pdf_light);
+    sampleLight(seed, lightSampleRes, pdfLightArea);
     vec3 p = pos;
     vec3 x = lightSampleRes.pos;
     vec3 ws = normalize(x - p);
@@ -120,7 +139,16 @@ vec3 cacDirectLight(vec3 pos, vec3 normal, vec3 wo, inout uint seed, Material ma
         float distance2 = dot(x - p, x - p);
         float cosThetaLight = max(0.0, dot(-ws, lightSampleRes.normal));
         float cosThetaObj = max(0.0, dot(ws, normal));
-        L_dir = lightSampleRes.emit * f_r * cosThetaObj * cosThetaLight / distance2 / pdf_light;
+
+        // MIS 权重计算
+        // 将光源 Area PDF 转换为 Solid Angle PDF
+        float pdfLightSA = pdfLightArea * distance2 / max(cosThetaLight, 1e-6f);
+        // 计算 BSDF 采样这个方向的 PDF (Diffuse = cosTheta / PI)
+        float pdfBSDFSA = cosThetaObj / M_PI;
+        // 计算权重
+        float weight = powerHeuristic(pdfLightSA, pdfBSDFSA);
+        
+        L_dir = lightSampleRes.emit * f_r * cosThetaObj * cosThetaLight / distance2 / pdfLightArea * weight;
     }
     return L_dir;
 }
@@ -131,12 +159,31 @@ vec3 pathTracing(int maxBounce, inout uint seed)
     uint rayFlags = gl_RayFlagsOpaqueEXT;
     vec3 totalRadiance = vec3(0.0);
     vec3 throughput = vec3(1.0);
+
+    // MIS 需要记录上一次 BSDF采样的 PDF 和 类型
+    float lastPdfBSDF = 0.0;
+    bool lastBounceWasSpecular = true; // 第一帧(摄像机射线)视为绝对准确，相当于 Specular，避免误杀
     
     for(int i = 0; i < maxBounce; ++i){
         traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
         if(hitValue.dis > 0.0f) {
             if(hasEmission(hitValue.mat)){
-                totalRadiance += hitValue.mat.emission * throughput;
+                float misWeight = 1.0;
+                // 如果是镜面，说明 NEE 无法采样到这里，必须全盘接受 BSDF 结果，权重为 1
+                // 如果上一次不是镜面反射且不是第一条摄像机射线 (i > 0) 
+                if(!lastBounceWasSpecular && i > 0) {
+                    // 反推 NEE 采样该点的概率 (PDF Solid Angle)
+                    float dist2 = dot(hitValue.worldPos - ray.origin, hitValue.worldPos - ray.origin);
+                    float cosThetaLight = max(0.0, dot(hitValue.worldNormal, -ray.direction));
+                    float lightArea = getLightArea(); 
+                    float pdfLightArea = 1.0 / lightArea;
+                    float pdfLightSA = pdfLightArea * dist2 / max(cosThetaLight, 1e-6f);
+
+                    // 计算 MIS 权重: BSDF / (BSDF + Light)
+                    misWeight = powerHeuristic(lastPdfBSDF, pdfLightSA);
+                }
+                
+                totalRadiance += hitValue.mat.emission * throughput * misWeight;
                 break;
             }
             vec3 radiance = cacDirectLight(hitValue.worldPos, hitValue.worldNormal, -ray.direction, seed, hitValue.mat);
@@ -147,13 +194,27 @@ vec3 pathTracing(int maxBounce, inout uint seed)
             // sampling
             float pdf;
             vec3 sampleDir;
-            if(nearEqual(hitValue.mat.metallic, 1.0, 0.00001f)){
+            bool isSpecular = false;
+            if(isSpecularMat(hitValue.mat)){
                 sampleSpecular(hitValue.worldNormal, ray.direction, sampleDir, pdf);
+                isSpecular = true;
             }else{
                 cosineSampleHemisphere(hitValue.worldNormal, seed, sampleDir, pdf);
+                isSpecular = false;
             }
+            
             vec3 f_r = evalDiffuseBRDF(-ray.direction, sampleDir, hitValue.worldNormal, hitValue.mat);
-            throughput *= f_r * dot(sampleDir, hitValue.worldNormal) / RUSSIAN_ROULETTE / pdf;
+            if (isSpecular) {
+                // Specular 处理:
+                // 简单起见假设 specular 完美反射：
+                throughput *= hitValue.mat.baseColor.rgb / RUSSIAN_ROULETTE / pdf;
+            } else {
+                throughput *= f_r * dot(sampleDir, hitValue.worldNormal) / RUSSIAN_ROULETTE / pdf;
+            }
+            
+            // 更新状态供下一次迭代使用
+            lastPdfBSDF = pdf;
+            lastBounceWasSpecular = isSpecular;
             ray.direction = sampleDir;
         }else{
             break;
@@ -163,6 +224,21 @@ vec3 pathTracing(int maxBounce, inout uint seed)
         if(x > RUSSIAN_ROULETTE) break;
     }
     return totalRadiance;
+}
+
+void temporalAccumulation(vec3 finalColor)
+{
+    if(cam.frame > 0)
+    {
+        float a         = 1.0f / float(cam.frame + 1);
+        vec3  old_color = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
+        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, finalColor, a), 1.f));
+    }
+    else
+    {
+        // First frame, replace the value in the buffer
+        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.f));
+    }
 }
 
 void main()
@@ -179,20 +255,6 @@ void main()
     }
     
     vec3 finalColor = accumulatedColor / float(SPP);
-
     
-    /*
-    if(cam.frame > 0)
-    {
-        float a         = 1.0f / float(cam.frame + 1);
-        vec3  old_color = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
-        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, finalColor, a), 1.f));
-    }
-    else
-    {
-        // First frame, replace the value in the buffer
-        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.f));
-    }
-    */
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.0f));
 }

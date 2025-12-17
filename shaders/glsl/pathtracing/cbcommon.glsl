@@ -206,3 +206,8 @@ bool nearEqual(float a, float b, float eps)
 {
     return abs(a - b) < eps;
 }
+
+bool isSpecularMat(Material mat)
+{
+    return nearEqual(mat.metallic, 1.0f, 0.00001f);
+}

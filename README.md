@@ -6,10 +6,11 @@ A hardware-accelerated ray tracing engine using Vulkan
 ## Feature
 
 - Monte Carlo Path Tracing
-- NEE
+- Next Event Estimation
 - Cosine-Weighted Importance Sampling
-- Diffuse Material
-- Specular Material
+- Multiple Importance Sampling
+- Lambertian Material
+- Mirror Material
 
 ![1spp128bounce](./demos/1spp128bounce.png)
 
