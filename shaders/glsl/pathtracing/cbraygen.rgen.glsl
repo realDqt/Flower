@@ -147,15 +147,13 @@ vec3 pathTracing(int maxBounce, inout uint seed)
             // sampling
             float pdf;
             vec3 sampleDir;
-            vec3 sampleNormal = hitValue.worldNormal;
-            sampleNormal.x = -sampleNormal.x; // hack
             if(nearEqual(hitValue.mat.metallic, 1.0, 0.00001f)){
-                sampleSpecular(sampleNormal, ray.direction, sampleDir, pdf);
+                sampleSpecular(hitValue.worldNormal, ray.direction, sampleDir, pdf);
             }else{
-                cosineSampleHemisphere(sampleNormal, seed, sampleDir, pdf);
+                cosineSampleHemisphere(hitValue.worldNormal, seed, sampleDir, pdf);
             }
-            vec3 f_r = evalDiffuseBRDF(-ray.direction, sampleDir, sampleNormal, hitValue.mat);
-            throughput *= f_r * dot(sampleDir, sampleNormal) / RUSSIAN_ROULETTE / pdf;
+            vec3 f_r = evalDiffuseBRDF(-ray.direction, sampleDir, hitValue.worldNormal, hitValue.mat);
+            throughput *= f_r * dot(sampleDir, hitValue.worldNormal) / RUSSIAN_ROULETTE / pdf;
             ray.direction = sampleDir;
         }else{
             break;

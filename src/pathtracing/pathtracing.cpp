@@ -43,8 +43,6 @@ public:
 	vks::Buffer geometryNodesBuffer;
 	
 	vks::Buffer materialDataBuffer;
-	
-	vks::Buffer transformBuffer;
 
 	vks::Buffer lightDataBuffer;
 	
@@ -82,7 +80,6 @@ public:
         deleteStorageImage();
         deleteAccelerationStructure(bottomLevelAS);
         deleteAccelerationStructure(topLevelAS);
-    	transformBuffer.destroy();
     	shaderBindingTables.raygen.destroy();
     	shaderBindingTables.miss.destroy();
     	shaderBindingTables.hit.destroy();
@@ -169,38 +166,6 @@ public:
 	// done
     void createBottomLevelAccelerationStructure()
     {
-    	std::vector<VkTransformMatrixKHR> transformMatrices{};
-    	for (auto mesh : cornell.meshes) {
-    		if (mesh->indexCount > 0) {
-    			VkTransformMatrixKHR transformMatrix{};
-    			auto m44 = glm::mat4(1.0f);
-    			float scale = 0.001f;
-    			glm::vec3 axisX = glm::vec3(1.0f, 0.0f, 0.0f);
-
-    			m44 = glm::rotate(m44, glm::radians(180.0f), axisX);
-    			m44 = glm::scale(m44, glm::vec3(scale));
-
-    			lightData.objectToWorld = m44;
-    			auto m44Trans = glm::transpose(m44);
-    			
-    			const float* rawData = reinterpret_cast<const float*>(&m44Trans);
-    			for (int i = 0; i < 3; ++i)
-    			{
-    				for (int j = 0; j < 4; ++j)
-    					transformMatrix.matrix[i][j] = rawData[i * 4 + j];
-    			}
-    			transformMatrices.push_back(transformMatrix);
-    		}
-    	}
-
-    	// Transform buffer
-    	VK_CHECK_RESULT(vulkanDevice->createBuffer(
-			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			&transformBuffer,
-			static_cast<uint32_t>(transformMatrices.size()) * sizeof(VkTransformMatrixKHR),
-			transformMatrices.data()));
-    	
         // Build
 		// One geometry per obj, so we can index materials using gl_GeometryIndexEXT
 		std::vector<uint32_t> maxPrimitiveCounts{};
@@ -209,15 +174,24 @@ public:
 		std::vector<VkAccelerationStructureBuildRangeInfoKHR*> pBuildRangeInfos{};
 		std::vector<GeometryNode> geometryNodes{};
     	std::vector<vkobj::MaterialData> materialDataVec{};
+    	int meshIndex = 0;
 		for (auto mesh : cornell.meshes) {
 			if (mesh->indexCount > 0) {
 				VkDeviceOrHostAddressConstKHR vertexBufferDeviceAddress{};
 				VkDeviceOrHostAddressConstKHR indexBufferDeviceAddress{};
-				VkDeviceOrHostAddressConstKHR transformBufferDeviceAddress{};
 
 				vertexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(cornell.vertices.buffer);
 				indexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(cornell.indices.buffer) + mesh->firstIndex * sizeof(uint32_t);
-				transformBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(transformBuffer.buffer) + static_cast<uint32_t>(geometryNodes.size()) * sizeof(VkTransformMatrixKHR);
+				
+				if (meshIndex == lightData.lightGeometryIndex) {
+					// 计算光源变换矩阵
+					auto m44 = glm::mat4(1.0f);
+					float scale = 0.001f;
+					glm::vec3 axisX = glm::vec3(1.0f, 0.0f, 0.0f);
+					m44 = glm::rotate(m44, glm::radians(180.0f), axisX);
+					m44 = glm::scale(m44, glm::vec3(scale));
+					lightData.objectToWorld = m44;
+				}
 
 				VkAccelerationStructureGeometryKHR geometry{};
 				geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
@@ -229,7 +203,6 @@ public:
 				geometry.geometry.triangles.vertexStride = sizeof(vkobj::Vertex);
 				geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
 				geometry.geometry.triangles.indexData = indexBufferDeviceAddress;
-				geometry.geometry.triangles.transformData = transformBufferDeviceAddress;
 				geometries.push_back(geometry);
 				maxPrimitiveCounts.push_back(mesh->indexCount / 3);
 
@@ -247,6 +220,7 @@ public:
 				
 				materialDataVec.push_back(mesh->material.GetData());
 			}
+			meshIndex++;
 		}
 		for (auto& rangeInfo : buildRangeInfos) {
 			pBuildRangeInfos.push_back(&rangeInfo);
@@ -371,10 +345,23 @@ public:
 	// done
     void createTopLevelAccelerationStructure()
     {
-        VkTransformMatrixKHR transformMatrix = {
-                1.0f, 0.0f, 0.0f, 0.0f,
-                0.0f, 1.0f, 0.0f, 0.0f,
-                0.0f, 0.0f, 1.0f, 0.0f };
+        VkTransformMatrixKHR transformMatrix = {};
+
+    	auto m44 = glm::mat4(1.0f);
+    	float scale = 0.001f;
+    	glm::vec3 axisX = glm::vec3(1.0f, 0.0f, 0.0f);
+
+    	m44 = glm::rotate(m44, glm::radians(180.0f), axisX);
+    	m44 = glm::scale(m44, glm::vec3(scale));
+        
+    	// 转置以适应 Vulkan [3][4] 行主序布局
+    	auto m44Trans = glm::transpose(m44);
+    	const float* rawData = reinterpret_cast<const float*>(&m44Trans);
+    	for (int i = 0; i < 3; ++i) {
+    		for (int j = 0; j < 4; ++j) {
+    			transformMatrix.matrix[i][j] = rawData[i * 4 + j];
+    		}
+    	}
 
         VkAccelerationStructureInstanceKHR instance{};
         instance.transform = transformMatrix;
