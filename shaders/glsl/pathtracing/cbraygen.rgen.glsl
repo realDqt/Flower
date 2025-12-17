@@ -58,8 +58,8 @@ void unpackLightWorldPositions(out vec3 tri0WorldPositions[3], out vec3 tri1Worl
     Indices indices = Indices(node.indexBufferDeviceAddress);
     
     for(int k = 0; k < 3; ++k){
-        tri0WorldPositions[k] = vec3(lightData.objectToWorld * vec4(vertices.v[indices.i[k] * 3].xyz, 1.0));
-        tri1WorldPositions[k] = vec3(lightData.objectToWorld * vec4(vertices.v[indices.i[k + 3] * 3].xyz, 1.0));
+        tri0WorldPositions[k] = vec3(lightData.objectToWorld * vec4(vertices.v[indices.i[k]].pos, 1.0));
+        tri1WorldPositions[k] = vec3(lightData.objectToWorld * vec4(vertices.v[indices.i[k + 3]].pos, 1.0));
     }
 }
 

@@ -18,8 +18,13 @@ struct RayPayload{
     Material mat;
     float dis;
 };
-struct Vertex{
+
+
+struct Vertex {
     vec3 pos;
+    vec3 normal;
+    vec2 uv;
+    vec4 color;
 };
 
 struct Triangle{
@@ -27,7 +32,7 @@ struct Triangle{
     vec3 normal;
 };
 
-layout(buffer_reference, scalar) buffer Vertices {vec4 v[]; };
+layout(buffer_reference, scalar) buffer Vertices {Vertex v[]; };
 layout(buffer_reference, scalar) buffer Indices {uint i[]; };
 
 struct GeometryNode{
@@ -41,6 +46,7 @@ struct Ray{
     float tmin;
     float tmax;
 };
+
 
 vec3 getNormal01(vec3 v)
 {

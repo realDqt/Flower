@@ -30,9 +30,8 @@ Triangle unpackTriangle(uint index){
     Vertices vertices = Vertices(geometryNode.vertexBufferDeviceAddress);
 
     for(uint i = 0; i < 3; i++){
-        const uint offset = indices.i[triIndex + i] * 3;
-        vec4 d0 = vertices.v[offset + 0];
-        tri.vertices[i].pos = d0.xyz;
+        const uint offset = indices.i[triIndex + i];
+        tri.vertices[i] = vertices.v[offset];
     }
 
     vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
@@ -78,7 +77,7 @@ void main()
     hitValue.mat = getMat();
     vec3 worldNormal = normalize(tri.normal * mat3(gl_WorldToObjectEXT)); // m^(-1)^T
     hitValue.worldNormal = worldNormal;
-    //hitValue.worldPos = cacWorldPosByRayHitInfo(); // 正常
-    hitValue.worldPos = cacWorldPosByInterpolation(tri); // 除了光源，全黑bug
+    hitValue.worldPos = cacWorldPosByRayHitInfo(); // 正常
+    //hitValue.worldPos = cacWorldPosByInterpolation(tri); // 除了光源，全黑bug
     hitValue.dis = gl_HitTEXT;
 }
