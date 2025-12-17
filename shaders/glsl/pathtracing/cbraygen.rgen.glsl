@@ -113,7 +113,7 @@ vec3 cacDirectLight(vec3 pos, vec3 normal, vec3 wo, inout uint seed, Material ma
     float lightDist = length(x - p);
     
     uint rayFlags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT;
-    traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, p, 0.01, ws, lightDist - 0.0001, 0);
+    traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, p, 0.01, ws, lightDist - 0.0001f, 0);
     if(hitValue.dis < 0.0f){
         // p对光源x可见
         vec3 f_r = evalDiffuseBRDF(ws, wo, normal, mat);
@@ -130,18 +130,19 @@ vec3 pathTracing(int maxBounce, inout uint seed)
     Ray ray = getRayFromCamera(0.001, 10000.0, seed);
     uint rayFlags = gl_RayFlagsOpaqueEXT;
     vec3 totalRadiance = vec3(0.0);
-    float divFactor = 1.0f;
+    vec3 throughput = vec3(1.0);
     
     for(int i = 0; i < maxBounce; ++i){
         traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
         if(hitValue.dis > 0.0f) {
             if(hasEmission(hitValue.mat)){
-                totalRadiance += hitValue.mat.emission / divFactor;
+                totalRadiance += hitValue.mat.emission * throughput;
                 break;
             }
             vec3 radiance = cacDirectLight(hitValue.worldPos, hitValue.worldNormal, -ray.direction, seed, hitValue.mat);
             
-            totalRadiance += radiance / divFactor;
+            totalRadiance += radiance * throughput;
+            
             ray.origin = hitValue.worldPos;
             // sampling
             float pdf;
@@ -153,8 +154,9 @@ vec3 pathTracing(int maxBounce, inout uint seed)
             }else{
                 cosineSampleHemisphere(sampleNormal, seed, sampleDir, pdf);
             }
+            vec3 f_r = evalDiffuseBRDF(-ray.direction, sampleDir, sampleNormal, hitValue.mat);
+            throughput *= f_r * dot(sampleDir, sampleNormal) / RUSSIAN_ROULETTE / pdf;
             ray.direction = sampleDir;
-            divFactor *= RUSSIAN_ROULETTE * pdf;
         }else{
             break;
         }
@@ -180,5 +182,19 @@ void main()
     
     vec3 finalColor = accumulatedColor / float(SPP);
 
+    
+    /*
+    if(cam.frame > 0)
+    {
+        float a         = 1.0f / float(cam.frame + 1);
+        vec3  old_color = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
+        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, finalColor, a), 1.f));
+    }
+    else
+    {
+        // First frame, replace the value in the buffer
+        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.f));
+    }
+    */
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.0f));
 }

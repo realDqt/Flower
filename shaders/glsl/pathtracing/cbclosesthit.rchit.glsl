@@ -78,7 +78,7 @@ void main()
     hitValue.mat = getMat();
     vec3 worldNormal = normalize(tri.normal * mat3(gl_WorldToObjectEXT)); // m^(-1)^T
     hitValue.worldNormal = worldNormal;
-    hitValue.worldPos = cacWorldPosByRayHitInfo(); // 正常
-    //hitValue.worldPos = cacWorldPosByInterpolation(tri); // 除了光源，全黑bug
+    //hitValue.worldPos = cacWorldPosByRayHitInfo(); // 正常
+    hitValue.worldPos = cacWorldPosByInterpolation(tri); // 除了光源，全黑bug
     hitValue.dis = gl_HitTEXT;
 }
