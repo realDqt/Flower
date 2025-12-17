@@ -113,7 +113,7 @@ vec3 cacDirectLight(vec3 pos, vec3 normal, vec3 wo, inout uint seed, Material ma
     float lightDist = length(x - p);
     
     uint rayFlags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT;
-    traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, p, 0.01, ws, lightDist - 0.0001f, 0);
+    traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, p, 0.001, ws, lightDist - 0.0001f, 0);
     if(hitValue.dis < 0.0f){
         // p对光源x可见
         vec3 f_r = evalDiffuseBRDF(ws, wo, normal, mat);
