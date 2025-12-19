@@ -85,6 +85,7 @@ endfunction(buildExamples)
 set(EXAMPLES
      raytracingbasic
 	 pathtracing
+	 restir
 )
 
 buildExamples()

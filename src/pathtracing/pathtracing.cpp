@@ -125,7 +125,7 @@ public:
         materials.push_back(light);
         materials.push_back(green);
         materials.push_back(white);
-        materials.push_back(white);
+        materials.push_back(specular);
 
     	lightData.lightGeometryIndex = 2;
         

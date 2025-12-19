@@ -143,7 +143,7 @@ void cosineSampleHemisphere(vec3 normal, inout uint seed, out vec3 sampleDir, ou
     float y = r * sin(theta);
     float z = sqrt(max(0.0, 1.0 - x*x - y*y)); // Z 轴对齐法线
 
-   sampleDir = toWorld(vec3(x, y, z), normal);
+    sampleDir = toWorld(vec3(x, y, z), normal);
     pdf = dot(sampleDir, normal) / M_PI;
 }
 
