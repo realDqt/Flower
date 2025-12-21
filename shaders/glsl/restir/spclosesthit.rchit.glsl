@@ -102,7 +102,7 @@ vec3 calcWorldNormalBySampling(Triangle tri, vec2 sampleUV)
     // 5. 变换到世界空间
     // 使用 gl_WorldToObjectEXT 的转置来处理法线变换，以应对非统一缩放
     // 变换公式：NormalWorld = NormalObject * ModelInverse
-    vec3 worldNormal = normalize(vec3(vec4(objectNormal, 0.0) * gl_WorldToObjectEXT));
+    vec3 worldNormal = normalize(objectNormal * mat3(gl_WorldToObjectEXT));
 
     return worldNormal;
 }
