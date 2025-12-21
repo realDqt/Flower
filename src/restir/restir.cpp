@@ -19,13 +19,12 @@ public:
 	vks::Buffer vertexBuffer;
 	vks::Buffer indexBuffer;
 	uint32_t indexCount{ 0 };
-	vks::Buffer transformBuffer;
 
 	struct GeometryNode {
 		uint64_t vertexBufferDeviceAddress;
 		uint64_t indexBufferDeviceAddress;
 		int32_t textureIndexBaseColor;
-		int32_t textureIndexOcclusion;
+		int32_t textureIndexNormal;
 	};
 	vks::Buffer geometryNodesBuffer;
 
@@ -88,7 +87,6 @@ public:
 			deleteAccelerationStructure(topLevelAS);
 			vertexBuffer.destroy();
 			indexBuffer.destroy();
-			transformBuffer.destroy();
 			shaderBindingTables.raygen.destroy();
 			shaderBindingTables.miss.destroy();
 			shaderBindingTables.hit.destroy();
@@ -125,45 +123,7 @@ public:
 	*/
 	void createBottomLevelAccelerationStructure()
 	{
-		// Use transform matrices from the glTF nodes
-		std::vector<VkTransformMatrixKHR> transformMatrices{};
-		for (auto node : scene.linearNodes) {
-			if (node->mesh) {
-				for (auto primitive : node->mesh->primitives) {
-					if (primitive->indexCount > 0) {
-						VkTransformMatrixKHR transformMatrix{};
-						//auto m = glm::mat3x4(glm::transpose(node->getMatrix()));
-						auto m_z = glm::mat3x4(
-							glm::rotate(glm::mat4(1.0f),
-								glm::radians(180.0f),
-								glm::vec3(0, 0, 1)));
-						
-						auto m_x = glm::mat3x4(
-							glm::rotate(glm::mat4(1.0f),
-								glm::radians(180.0f),
-								glm::vec3(1, 0, 0)));
-						
-						auto m_y = glm::mat3x4(
-							glm::rotate(glm::mat4(1.0f),
-								glm::radians(180.0f),
-								glm::vec3(0, 1, 0)));
-
-						auto m = m_z;
-						memcpy(&transformMatrix, (void*)&m, sizeof(glm::mat3x4));
-						transformMatrices.push_back(transformMatrix);
-					}
-				}
-			}
-		}
-
-		// Transform buffer
-		VK_CHECK_RESULT(vulkanDevice->createBuffer(
-			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			&transformBuffer,
-			static_cast<uint32_t>(transformMatrices.size()) * sizeof(VkTransformMatrixKHR),
-			transformMatrices.data()));
-
+		
 		// Build
 		// One geometry per glTF node, so we can index materials using gl_GeometryIndexEXT
 		std::vector<uint32_t> maxPrimitiveCounts{};
@@ -177,11 +137,9 @@ public:
 					if (primitive->indexCount > 0) {
 						VkDeviceOrHostAddressConstKHR vertexBufferDeviceAddress{};
 						VkDeviceOrHostAddressConstKHR indexBufferDeviceAddress{};
-						VkDeviceOrHostAddressConstKHR transformBufferDeviceAddress{};
 
 						vertexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(scene.vertices.buffer);
 						indexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(scene.indices.buffer) + primitive->firstIndex * sizeof(uint32_t);
-						transformBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(transformBuffer.buffer) + static_cast<uint32_t>(geometryNodes.size()) * sizeof(VkTransformMatrixKHR);
 
 						VkAccelerationStructureGeometryKHR geometry{};
 						geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
@@ -193,7 +151,6 @@ public:
 						geometry.geometry.triangles.vertexStride = sizeof(vkglTF::Vertex);
 						geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
 						geometry.geometry.triangles.indexData = indexBufferDeviceAddress;
-						geometry.geometry.triangles.transformData = transformBufferDeviceAddress;
 						geometries.push_back(geometry);
 						maxPrimitiveCounts.push_back(primitive->indexCount / 3);
 
@@ -208,7 +165,7 @@ public:
 						geometryNode.vertexBufferDeviceAddress = vertexBufferDeviceAddress.deviceAddress;
 						geometryNode.indexBufferDeviceAddress = indexBufferDeviceAddress.deviceAddress;
 						geometryNode.textureIndexBaseColor = primitive->material.baseColorTexture->index;
-						geometryNode.textureIndexOcclusion = primitive->material.occlusionTexture ? primitive->material.occlusionTexture->index : -1;
+						geometryNode.textureIndexNormal = primitive->material.normalTexture ? primitive->material.normalTexture->index : -1;
 						geometryNodes.push_back(geometryNode);
 					}
 				}
@@ -296,10 +253,21 @@ public:
 	void createTopLevelAccelerationStructure()
 	{
 		// We flip the matrix [1][1] = -1.0f to accomodate for the glTF up vector
-		VkTransformMatrixKHR transformMatrix = {
-			1.0f, 0.0f, 0.0f, 0.0f,
-			0.0f, -1.0f, 0.0f, 0.0f,
-			0.0f, 0.0f, 1.0f, 0.0f };
+
+		auto m44 = glm::mat4(1.0f);
+
+		auto m44Trans = glm::transpose(glm::mat4(1.0f));
+		
+		VkTransformMatrixKHR transformMatrix{};
+
+		const float* mt_data = reinterpret_cast<const float*>(&m44Trans);
+		for (int i = 0; i < 3; ++i)
+		{
+			for (int j = 0; j < 4; ++j)
+			{
+				transformMatrix.matrix[i][j] = mt_data[i * 4 + j];
+			}
+		}
 
 		VkAccelerationStructureInstanceKHR instance{};
 		instance.transform = transformMatrix;
@@ -555,6 +523,7 @@ public:
 			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
 			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(scene.textures.size()) * maxConcurrentFrames }
 		};
+		//std::cout << "total texture = " << scene.textures.size() << std::endl; // 49
 		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, maxConcurrentFrames);
 		VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolCreateInfo, nullptr, &descriptorPool));
 
