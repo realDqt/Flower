@@ -395,7 +395,6 @@ public:
 
 		// Copy handles
 		memcpy(shaderBindingTables.raygen.mapped, shaderHandleStorage.data(), handleSize);
-		// We are using two miss shaders, so we need to get two handles for the miss shader binding table
 		memcpy(shaderBindingTables.miss.mapped, shaderHandleStorage.data() + handleSizeAligned, handleSize);
 		memcpy(shaderBindingTables.hit.mapped, shaderHandleStorage.data() + handleSizeAligned * 2, handleSize);
 	}

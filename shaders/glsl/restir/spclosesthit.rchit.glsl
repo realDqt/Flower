@@ -64,7 +64,11 @@ vec2 getSampleUV(Triangle tri)
 
 vec3 calcWorldNormalByInterpolation(Triangle tri)
 {
-    vec3 worldNormal = normalize(tri.normal * mat3(gl_WorldToObjectEXT)); // m^(-1)^T
+    const vec3 barycentrics = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
+    vec3 vNormal = tri.vertices[0].normal * barycentrics.x +
+                   tri.vertices[1].normal * barycentrics.y +
+                   tri.vertices[2].normal * barycentrics.z;
+    vec3 worldNormal = normalize(vNormal * mat3(gl_WorldToObjectEXT)); // m^(-1)^T
     return worldNormal;
 }
 
@@ -123,6 +127,5 @@ void main()
     }else{
         hitValue.worldNormal = calcWorldNormalByInterpolation(tri);
     }
-    
     hitValue.dis = gl_HitTEXT;
 }

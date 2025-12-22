@@ -61,15 +61,17 @@ void main()
 
     vec3 hitColor = hitValue.baseColor.rgb;
     if(hitValue.dis < 0.0f) hitColor = vec3(0.0f);
+
+    vec3 hitNormal01 = getNormal01(hitValue.worldNormal);
     if(cam.frame > 0)
     {
         float a         = 1.0f / float(cam.frame + 1);
         vec3  old_color = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
-        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, hitColor, a), 1.f));
+        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, hitNormal01, a), 1.f));
     }
     else
     {
         // First frame, replace the value in the buffer
-        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitColor, 1.f));
+        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitNormal01, 1.f));
     }
 }
