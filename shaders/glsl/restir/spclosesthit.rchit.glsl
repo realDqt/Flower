@@ -77,12 +77,12 @@ vec3 calcWorldNormalBySampling(Triangle tri, vec2 sampleUV)
     
     // 1. 重心坐标插值获取顶点法线和切线 (Object Space)
     vec3 vNormal = tri.vertices[0].normal * barycentrics.x +
-    tri.vertices[1].normal * barycentrics.y +
-    tri.vertices[2].normal * barycentrics.z;
+                   tri.vertices[1].normal * barycentrics.y +
+                   tri.vertices[2].normal * barycentrics.z;
 
     vec4 vTangent = tri.vertices[0].tangent * barycentrics.x +
-    tri.vertices[1].tangent * barycentrics.y +
-    tri.vertices[2].tangent * barycentrics.z;
+                    tri.vertices[1].tangent * barycentrics.y +
+                    tri.vertices[2].tangent * barycentrics.z;
 
     // 2. 将法线贴图采样值从 [0, 1] 映射到 [-1, 1]
     vec3 tangentNormal = localNormalSample * 2.0 - 1.0;
@@ -102,7 +102,7 @@ vec3 calcWorldNormalBySampling(Triangle tri, vec2 sampleUV)
     // 5. 变换到世界空间
     // 使用 gl_WorldToObjectEXT 的转置来处理法线变换，以应对非统一缩放
     // 变换公式：NormalWorld = NormalObject * ModelInverse
-    vec3 worldNormal = normalize(objectNormal * mat3(gl_WorldToObjectEXT));
+    vec3 worldNormal = normalize(objectNormal * mat3(gl_WorldToObjectEXT)); // m^(-1)^T
 
     return worldNormal;
 }

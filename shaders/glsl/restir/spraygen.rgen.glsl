@@ -60,7 +60,7 @@ void main()
     }
 
     vec3 hitColor = hitValue.baseColor.rgb;
-
+    if(hitValue.dis < 0.0f) hitColor = vec3(0.0f);
     if(cam.frame > 0)
     {
         float a         = 1.0f / float(cam.frame + 1);
