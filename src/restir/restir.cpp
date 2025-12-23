@@ -10,6 +10,8 @@
 #define VK_GLTF_MATERIAL_IDS
 #include "VulkanglTFModel.h"
 
+#include "Light.hpp"
+
 class Sponza : public VulkanRaytracingSample
 {
 public:
@@ -53,6 +55,9 @@ public:
 
 	VkPhysicalDeviceDescriptorIndexingFeaturesEXT physicalDeviceDescriptorIndexingFeatures{};
 
+	DirectionalLight directionalLight;
+	vks::Buffer lightBuffer;
+
 	Sponza() : VulkanRaytracingSample()
 	{
 		title = "Ray tracing glTF model";
@@ -62,7 +67,7 @@ public:
 
 		camera.setPerspective(60.0f, (float)width / (float)height, 0.1f, 512.0f);
 		camera.setRotation(glm::vec3(0.0f, 0.0f, 0.0f));
-		camera.setTranslation(glm::vec3(0.0f, -0.1f, -1.0f));
+		camera.setTranslation(glm::vec3(0.0f, 3.0f, -1.0f));
 
 		enableExtensions();
 
@@ -91,6 +96,7 @@ public:
 			shaderBindingTables.miss.destroy();
 			shaderBindingTables.hit.destroy();
 			geometryNodesBuffer.destroy();
+			lightBuffer.destroy();
 			for (auto& buffer : uniformBuffers) {
 				buffer.destroy();
 			}
@@ -413,8 +419,8 @@ public:
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 1),
 			// Binding 2: Uniform buffer
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR, 2),
-			// Binding 3: Texture image
-			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, 3),
+			// Binding 3: Light buffer
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR, 3),
 			// Binding 4: Geometry node information SSBO
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, 4),
 			// Binding 5: All images used by the glTF model
@@ -511,7 +517,7 @@ public:
 			{ VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxConcurrentFrames },
 			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, maxConcurrentFrames },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
 			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
 			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(scene.textures.size()) * maxConcurrentFrames }
 		};
@@ -555,6 +561,8 @@ public:
 				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &storageImageDescriptor),
 				// Binding 2: Uniform data
 				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2, &uniformBuffers[i].descriptor),
+				// Binding 3: light Data
+				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &lightBuffer.descriptor),
 				// Binding 4: Geometry node information SSBO
 				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &geometryNodesBuffer.descriptor),
 			};
@@ -591,6 +599,31 @@ public:
 			VK_CHECK_RESULT(vulkanDevice->createBuffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &buffer, sizeof(UniformData), &uniformData));
 			VK_CHECK_RESULT(buffer.map());
 		}
+	}
+
+	void createLightBuffer()
+	{
+		directionalLight.direction = glm::vec3(0.0f, -1.0f, 0.0f);
+		directionalLight.emission = 8.0f * glm::vec3(0.747f+0.058f, 0.747f+0.258f, 0.747f) + 15.6f * glm::vec3(0.740f+0.287f,0.740f+0.160f,0.740f) + 18.4f * glm::vec3(0.737f+0.642f,0.737f+0.159f,0.737f); // copy from cornell
+
+		vks::Buffer stagingBuffer;
+
+		VK_CHECK_RESULT(vulkanDevice->createBuffer(
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			&stagingBuffer,
+			sizeof(DirectionalLight),
+			&directionalLight));
+
+		VK_CHECK_RESULT(vulkanDevice->createBuffer(
+			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			&lightBuffer,
+			sizeof(DirectionalLight)));
+
+		vulkanDevice->copyBuffer(&stagingBuffer, &lightBuffer, queue);
+
+		stagingBuffer.destroy();
 	}
 
 	/*
@@ -665,6 +698,7 @@ public:
 
 		createStorageImage(swapChain.colorFormat, { width, height, 1 });
 		createUniformBuffer();
+		createLightBuffer();
 		createRayTracingPipeline();
 		createShaderBindingTables();
 		createDescriptorSets();

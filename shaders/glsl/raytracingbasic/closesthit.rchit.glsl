@@ -47,6 +47,7 @@ void main()
 	}
 
 	hitValue = color;
+	hitValue = vec3(1.0);
 
 	// Shadow casting
 	float tmin = 0.001;
@@ -54,10 +55,12 @@ void main()
 	float epsilon = 0.001;
 	vec3 origin = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT + tri.normal * epsilon;
 	shadowed = true;  
-	vec3 lightVector = vec3(-5.0, -2.5, -5.0);
+	vec3 lightVector = vec3(0, 1, 0);
+	/*
 	// Trace shadow ray and offset indices to match shadow hit/miss shader group indices
-	traceRayEXT(topLevelAS, gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT, 0xFF, 0, 0, 1, origin, tmin, lightVector, tmax, 2);
+	traceRayEXT(topLevelAS, gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT | gl_RayFlagsSkipClosestHitShaderEXT, 0xFF, 0, 0, 1, origin, tmin, -lightVector, tmax, 2);
 	if (shadowed) {
 		hitValue *= 0.7;
 	}
+	*/
 }

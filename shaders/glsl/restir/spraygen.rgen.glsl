@@ -14,18 +14,21 @@ layout(binding = 2, set = 0) uniform CameraProperties
     uint frame;
 } cam;
 
-layout(location = 0) rayPayloadEXT RayPayload hitValue;
+layout(binding = 3, set = 0) buffer DirectionalLight{
+    vec4 direction; // 平行光方向 (从光源指向场景)
+    vec4 emission;  // 强度/颜色
+} directionalLight;
 
+layout(location = 0) rayPayloadEXT RayPayload hitValue;
 
 uint getSeed()
 {
-    uint seed = tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, cam.frame);
-    return seed;
+    return tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, cam.frame);
 }
 
+// 相机射线生成 (含抗锯齿抖动)
 Ray getRayFromCamera(float tmin, float tmax, inout uint seed)
 {
-
     float r1 = rnd(seed);
     float r2 = rnd(seed);
 
@@ -46,32 +49,105 @@ Ray getRayFromCamera(float tmin, float tmax, inout uint seed)
     return ray;
 }
 
+// 计算平行光的直接光照贡献
+vec3 cacDirectionalLight(vec3 pos, vec3 wo, vec3 normal, vec4 baseColor)
+{
+    vec3 L_dir = vec3(0.0);
+    vec3 wi = normalize(-directionalLight.direction.xyz); // 指向光源的方向
+    
+    uint rayFlags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT;
+    
+    // 逻辑：向着平行光方向追踪 10000 距离，看是否有遮挡
+    traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, pos, 0.001, wi, 10000.0, 0);
+
+    // hitValue.dis < 0 表示未击中任何物体（路径畅通）
+    if(hitValue.dis < 0.0f) {
+        vec3 brdf = evalDiffuseBRDF(wi, wo, normal, baseColor); // wi并不影响简单diffuse
+        L_dir = directionalLight.emission.xyz * brdf * max(dot(wi, normal), 0.0f);
+    }
+    return L_dir;
+}
+
+vec3 pathTracing(int maxBounce, inout uint seed)
+{
+    Ray ray = getRayFromCamera(0.001, 10000.0, seed);
+    vec3 throughput = vec3(1.0);
+    vec3 totalRadiance = vec3(0.0);
+
+    for(int i = 0; i < maxBounce; ++i) {
+        // 执行求交
+        traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
+
+        // 如果未击中场景，可能击中天空，这里简单返回背景色
+        if(hitValue.dis < 0.0f) {
+            // totalRadiance += vec3(0.1) * throughput; // 模拟环境光压底
+            break;
+        }
+
+        // --- 直接光采样 (Next Event Estimation for Directional Light) ---
+        vec3 directL = cacDirectionalLight(hitValue.worldPos, -ray.direction, hitValue.worldNormal, hitValue.baseColor);
+        totalRadiance += directL * throughput;
+
+        // --- 间接光采样 (BSDF Sampling) ---
+        vec3 sampleDir;
+        float pdf;
+        cosineSampleHemisphere(hitValue.worldNormal, seed, sampleDir, pdf);
+
+        vec3 brdf = evalDiffuseBRDF(sampleDir, -ray.direction, hitValue.worldNormal, hitValue.baseColor);
+
+        // 更新吞吐量: (BRDF * cos) / PDF
+        // 对于 cosineSampleHemisphere, pdf = cos / PI, 因此缩写为 baseColor
+        throughput *= (brdf * dot(sampleDir, hitValue.worldNormal)) / pdf;
+
+        // 俄罗斯轮盘赌
+        if(rnd(seed) > RUSSIAN_ROULETTE) break;
+        throughput /= RUSSIAN_ROULETTE;
+
+        // 更新射线状态进行下一次弹射
+        ray.origin = hitValue.worldPos;
+        ray.direction = sampleDir;
+    }
+
+    return totalRadiance;
+}
+
+vec3 getSceneBaseColor(inout uint seed)
+{
+    Ray ray = getRayFromCamera(0.001, 10000.0, seed);
+    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
+    if(hitValue.dis > 0.0f){
+        //traceRayEXT(topLevelAS, gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, hitValue.worldPos, ray.tmin, directionalLight.direction.xyz, ray.tmax, 0);
+        return hitValue.baseColor.rgb;
+    }else{
+        return vec3(0.0f);
+    }
+}
+
+void temporalAccumalation(vec3 finalColor)
+{
+    // 时间累积逻辑
+    if(cam.frame > 0) {
+        float a = 1.0f / float(cam.frame + 1);
+        vec3 old_color = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
+        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, finalColor, a), 1.f));
+    } else {
+        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.f));
+    }
+}
+
 void main()
 {
     uint seed = getSeed();
-    
-    Ray ray = getRayFromCamera(0.001, 10000.0, seed);
-
+    /*
     const int SPP = 1;
-    const int BOUNCE = 1;
+    const int BOUNCE = 128; // Sponza 建议 3-5 次 bounce 获得较好的间接光效果
+    vec3 accumaltedColor = vec3(0.0);
+    for(int spp = 0; spp < SPP; ++spp){
+        accumaltedColor += pathTracing(BOUNCE, seed);
+    }
+    vec3 finalColor = accumaltedColor / SPP;
+    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.f));
+    */
+    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(getSceneBaseColor(seed), 1.f));
     
-    for(int spp = 0; spp < SPP; spp++) {
-        traceRayEXT(topLevelAS, gl_RayFlagsNoneEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
-    }
-
-    vec3 hitColor = hitValue.baseColor.rgb;
-    if(hitValue.dis < 0.0f) hitColor = vec3(0.0f);
-
-    vec3 hitNormal01 = getNormal01(hitValue.worldNormal);
-    if(cam.frame > 0)
-    {
-        float a         = 1.0f / float(cam.frame + 1);
-        vec3  old_color = imageLoad(image, ivec2(gl_LaunchIDEXT.xy)).xyz;
-        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, hitNormal01, a), 1.f));
-    }
-    else
-    {
-        // First frame, replace the value in the buffer
-        imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitNormal01, 1.f));
-    }
 }

@@ -203,7 +203,7 @@ vec3 pathTracing(int maxBounce, inout uint seed)
                 isSpecular = false;
             }
             
-            vec3 f_r = evalDiffuseBRDF(-ray.direction, sampleDir, hitValue.worldNormal, hitValue.mat);
+            vec3 f_r = evalDiffuseBRDF(sampleDir, -ray.direction, hitValue.worldNormal, hitValue.mat);
             if (isSpecular) {
                 // Specular 处理:
                 // 简单起见假设 specular 完美反射：

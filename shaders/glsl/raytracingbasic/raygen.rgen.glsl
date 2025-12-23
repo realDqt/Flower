@@ -59,6 +59,8 @@ void main()
 
 	vec3 hitVal = hitValues / float(samples);
 
+	imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitVal, 1.f));
+	/*
 	if(cam.frame > 0)
 	{
 		float a         = 1.0f / float(cam.frame + 1);
@@ -70,4 +72,5 @@ void main()
 		// First frame, replace the value in the buffer
 		imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitVal, 1.f));
 	}
+	*/
 }

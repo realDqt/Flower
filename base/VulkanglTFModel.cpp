@@ -841,7 +841,7 @@ void vkglTF::Model::loadNode(vkglTF::Node *parent, const tinygltf::Node &node, u
 				posMax = glm::vec3(posAccessor.maxValues[0], posAccessor.maxValues[1], posAccessor.maxValues[2]);
 
 				if (primitive.attributes.find("NORMAL") != primitive.attributes.end()) {
-                    std::cout << "There is normal" << std::endl;
+                    //std::cout << "There is normal" << std::endl;
 					const tinygltf::Accessor &normAccessor = model.accessors[primitive.attributes.find("NORMAL")->second];
 					const tinygltf::BufferView &normView = model.bufferViews[normAccessor.bufferView];
 					bufferNormals = reinterpret_cast<const float *>(&(model.buffers[normView.buffer].data[normAccessor.byteOffset + normView.byteOffset]));
@@ -864,7 +864,7 @@ void vkglTF::Model::loadNode(vkglTF::Node *parent, const tinygltf::Node &node, u
 
 				if (primitive.attributes.find("TANGENT") != primitive.attributes.end())
 				{
-                    std::cout << "There is TANGENT" << std::endl;
+                    //std::cout << "There is TANGENT" << std::endl;
 					const tinygltf::Accessor &tangentAccessor = model.accessors[primitive.attributes.find("TANGENT")->second];
 					const tinygltf::BufferView &tangentView = model.bufferViews[tangentAccessor.bufferView];
 					bufferTangents = reinterpret_cast<const float *>(&(model.buffers[tangentView.buffer].data[tangentAccessor.byteOffset + tangentView.byteOffset]));

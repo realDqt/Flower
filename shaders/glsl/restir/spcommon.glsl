@@ -81,3 +81,43 @@ vec3 getNormal01(vec3 v)
     v = (v + vec3(1.0)) * vec3(0.5);
     return v;
 }
+
+vec3 evalDiffuseBRDF(vec3 wi, vec3 wo, vec3 normal, vec4 baseColor)
+{
+    float cosalpha = dot(wo, normal);
+    if(cosalpha > 0.0){
+        return baseColor.rgb / M_PI;
+    }else{
+        return vec3(0.0);
+    }
+}
+
+vec3 toWorld(vec3 a, vec3 n)
+{
+    vec3 b, c;
+    if(abs(n.x) > abs(n.y)){
+        float invLen = 1.0f / length(vec2(n.x, n.z));
+        c = vec3(n.z * invLen, 0.0, -n.x * invLen);
+    }else{
+        float invLen = 1.0f / length(vec2(n.y, n.z));
+        c = vec3(0.0, n.z * invLen, -n.y * invLen);
+    }
+    b = cross(c, n);
+    return a.x * b + a.y * c + a.z * n;
+}
+
+void cosineSampleHemisphere(vec3 normal, inout uint seed, out vec3 sampleDir, out float pdf)
+{
+    float r1 = rnd(seed);
+    float r2 = rnd(seed);
+    float r = sqrt(r1);
+    float theta = 2.0 * M_PI * r2;
+
+    // 在切线空间生成射线
+    float x = r * cos(theta);
+    float y = r * sin(theta);
+    float z = sqrt(max(0.0, 1.0 - x*x - y*y)); // Z 轴对齐法线
+
+    sampleDir = toWorld(vec3(x, y, z), normal);
+    pdf = dot(sampleDir, normal) / M_PI;
+}
