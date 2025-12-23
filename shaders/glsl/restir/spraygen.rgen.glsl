@@ -15,8 +15,8 @@ layout(binding = 2, set = 0) uniform CameraProperties
 } cam;
 
 layout(binding = 3, set = 0) buffer DirectionalLight{
-    vec4 direction; // 平行光方向 (从光源指向场景)
-    vec4 emission;  // 强度/颜色
+    vec3 direction; // 平行光方向 (从光源指向场景)
+    vec3 emission;  // 强度/颜色
 } directionalLight;
 
 layout(location = 0) rayPayloadEXT RayPayload hitValue;
@@ -75,31 +75,25 @@ vec3 pathTracing(int maxBounce, inout uint seed)
     vec3 totalRadiance = vec3(0.0);
 
     for(int i = 0; i < maxBounce; ++i) {
-        // 执行求交
         traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
-
-        // 如果未击中场景，可能击中天空，这里简单返回背景色
+        
         if(hitValue.dis < 0.0f) {
-            // totalRadiance += vec3(0.1) * throughput; // 模拟环境光压底
             break;
         }
 
-        // --- 直接光采样 (Next Event Estimation for Directional Light) ---
+        // --- Next Event Estimation for Directional Light ---
         vec3 directL = cacDirectionalLight(hitValue.worldPos, -ray.direction, hitValue.worldNormal, hitValue.baseColor);
         totalRadiance += directL * throughput;
 
-        // --- 间接光采样 (BSDF Sampling) ---
+        // --- BSDF Sampling ---
         vec3 sampleDir;
         float pdf;
         cosineSampleHemisphere(hitValue.worldNormal, seed, sampleDir, pdf);
 
         vec3 brdf = evalDiffuseBRDF(sampleDir, -ray.direction, hitValue.worldNormal, hitValue.baseColor);
-
-        // 更新吞吐量: (BRDF * cos) / PDF
-        // 对于 cosineSampleHemisphere, pdf = cos / PI, 因此缩写为 baseColor
+        
         throughput *= (brdf * dot(sampleDir, hitValue.worldNormal)) / pdf;
-
-        // 俄罗斯轮盘赌
+        
         if(rnd(seed) > RUSSIAN_ROULETTE) break;
         throughput /= RUSSIAN_ROULETTE;
 
@@ -140,8 +134,8 @@ void main()
 {
     uint seed = getSeed();
     
-    const int SPP = 1024;
-    const int BOUNCE = 128; // Sponza 建议 3-5 次 bounce 获得较好的间接光效果
+    const int SPP = 4;
+    const int BOUNCE = 128; 
     vec3 accumaltedColor = vec3(0.0);
     for(int spp = 0; spp < SPP; ++spp){
         accumaltedColor += pathTracing(BOUNCE, seed);
