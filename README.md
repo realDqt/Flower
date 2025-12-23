@@ -12,8 +12,10 @@ A hardware-accelerated ray tracing engine using Vulkan
 - Lambertian Material
 - Mirror Material
 
-![1spp128bounce](./demos/1spp128bounce.png)
+![CornellBox1SPP128Bounce](./demos/CornellBox1SPP128Bounce.png)
 
 
 
-![specular](./demos/specular.png)
+![CornellBoxSpecular](./demos/CornellBoxSpecular.png)
+
+![Sponza1024Spp.png](./demos/Sponza1024Spp.png)

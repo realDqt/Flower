@@ -53,7 +53,7 @@ Ray getRayFromCamera(float tmin, float tmax, inout uint seed)
 vec3 cacDirectionalLight(vec3 pos, vec3 wo, vec3 normal, vec4 baseColor)
 {
     vec3 L_dir = vec3(0.0);
-    vec3 wi = normalize(-directionalLight.direction.xyz); // 指向光源的方向
+    vec3 wi = normalize(directionalLight.direction.xyz); // 指向光源的方向
     
     uint rayFlags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT;
     
@@ -116,7 +116,8 @@ vec3 getSceneBaseColor(inout uint seed)
     Ray ray = getRayFromCamera(0.001, 10000.0, seed);
     traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
     if(hitValue.dis > 0.0f){
-        //traceRayEXT(topLevelAS, gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, hitValue.worldPos, ray.tmin, directionalLight.direction.xyz, ray.tmax, 0);
+        traceRayEXT(topLevelAS, gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, hitValue.worldPos, ray.tmin, directionalLight.direction.xyz, ray.tmax, 0);
+        if(hitValue.dis > 0.0f)hitValue.baseColor.rgb *= 0.7f;
         return hitValue.baseColor.rgb;
     }else{
         return vec3(0.0f);
@@ -138,8 +139,8 @@ void temporalAccumalation(vec3 finalColor)
 void main()
 {
     uint seed = getSeed();
-    /*
-    const int SPP = 1;
+    
+    const int SPP = 1024;
     const int BOUNCE = 128; // Sponza 建议 3-5 次 bounce 获得较好的间接光效果
     vec3 accumaltedColor = vec3(0.0);
     for(int spp = 0; spp < SPP; ++spp){
@@ -147,7 +148,4 @@ void main()
     }
     vec3 finalColor = accumaltedColor / SPP;
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.f));
-    */
-    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(getSceneBaseColor(seed), 1.f));
-    
 }
