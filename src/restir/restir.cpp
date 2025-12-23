@@ -60,7 +60,7 @@ public:
 
 	Sponza() : VulkanRaytracingSample()
 	{
-		title = "Ray tracing glTF model";
+		title = "Restir GI";
 		camera.type = Camera::CameraType::firstperson;
 		camera.rotationSpeed = 0.25f;
 		//camera.movementSpeed = 0.25f;
@@ -603,7 +603,7 @@ public:
 
 	void createLightBuffer()
 	{
-		directionalLight.direction = glm::vec3(0.0f, -1.0f, 0.0f);
+		directionalLight.direction = glm::vec3(0.0f, 1.0f, 0.0f);
 		directionalLight.emission = 8.0f * glm::vec3(0.747f+0.058f, 0.747f+0.258f, 0.747f) + 15.6f * glm::vec3(0.740f+0.287f,0.740f+0.160f,0.740f) + 18.4f * glm::vec3(0.737f+0.642f,0.737f+0.159f,0.737f); // copy from cornell
 
 		vks::Buffer stagingBuffer;

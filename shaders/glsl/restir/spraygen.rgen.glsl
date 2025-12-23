@@ -53,7 +53,7 @@ Ray getRayFromCamera(float tmin, float tmax, inout uint seed)
 vec3 cacDirectionalLight(vec3 pos, vec3 wo, vec3 normal, vec4 baseColor)
 {
     vec3 L_dir = vec3(0.0);
-    vec3 wi = normalize(directionalLight.direction.xyz); // 指向光源的方向
+    vec3 wi = normalize(-directionalLight.direction.xyz); // 指向光源的方向
     
     uint rayFlags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT;
     
@@ -110,7 +110,7 @@ vec3 getSceneBaseColor(inout uint seed)
     Ray ray = getRayFromCamera(0.001, 10000.0, seed);
     traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
     if(hitValue.dis > 0.0f){
-        traceRayEXT(topLevelAS, gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, hitValue.worldPos, ray.tmin, directionalLight.direction.xyz, ray.tmax, 0);
+        traceRayEXT(topLevelAS, gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, hitValue.worldPos, ray.tmin, -directionalLight.direction.xyz, ray.tmax, 0);
         if(hitValue.dis > 0.0f)hitValue.baseColor.rgb *= 0.7f;
         return hitValue.baseColor.rgb;
     }else{
