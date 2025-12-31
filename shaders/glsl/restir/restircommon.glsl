@@ -32,3 +32,20 @@ void MergeReservoir(inout Reservoir rDest, inout uint seed, Reservoir rSrc, floa
     UpdateReservoir(rDest, seed, rSrc.z, p_hat * rSrc.W * rSrc.M);
     rDest.M = M0 + rSrc.M;
 }
+
+float pq(Reservoir r)
+{
+    vec3 sampleDir = normalize(r.z.x_s.xyz - r.z.x_v.xyz);
+    return max(dot(r.z.n_v.xyz, sampleDir), 0.0f) / M_PI;
+}
+
+float luminance(vec3 color)
+{
+    // 权重：R=0.2126, G=0.7152, B=0.0722
+    return dot(color, vec3(0.2126, 0.7152, 0.0722));
+}
+
+float pqHat(Reservoir r)
+{
+    return luminance(r.z.Lo.rgb);
+}

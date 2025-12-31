@@ -73,15 +73,24 @@ vec3 cacDirectionalLight(vec3 pos, vec3 wo, vec3 normal, vec4 baseColor)
     return L_dir;
 }
 
-vec3 pathTracing(int maxBounce, inout uint seed)
+vec3 cacNBounceLighting(vec3 worldPos,  vec3 worldNormal, vec4 baseColor, vec3 wo, int nBounce, inout uint seed)
 {
-    Ray ray = getRayFromCamera(0.001, 10000.0, seed);
-    vec3 throughput = vec3(1.0);
-    vec3 totalRadiance = vec3(0.0);
+    vec3 totalRadiance = cacDirectionalLight(worldPos, wo, worldNormal, baseColor);
 
-    for(int i = 0; i < maxBounce; ++i) {
+    vec3 sampleDir;
+    float pdf;
+    cosineSampleHemisphere(worldNormal, seed, sampleDir, pdf);
+    Ray ray;
+    ray.origin = worldPos;
+    ray.direction = sampleDir;
+    ray.tmin = 0.001;
+    ray.tmax = 10000.0;
+    vec3 brdf = evalDiffuseBRDF(sampleDir, wo, worldNormal, baseColor);
+    vec3 throughput = (brdf * dot(sampleDir, worldNormal)) / pdf;
+
+    for(int i = 0; i < nBounce; ++i) {
         traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
-        
+
         if(hitValue.dis < 0.0f) {
             break;
         }
@@ -96,9 +105,9 @@ vec3 pathTracing(int maxBounce, inout uint seed)
         cosineSampleHemisphere(hitValue.worldNormal, seed, sampleDir, pdf);
 
         vec3 brdf = evalDiffuseBRDF(sampleDir, -ray.direction, hitValue.worldNormal, hitValue.baseColor);
-        
+
         throughput *= (brdf * dot(sampleDir, hitValue.worldNormal)) / pdf;
-        
+
         if(rnd(seed) > RUSSIAN_ROULETTE) break;
         throughput /= RUSSIAN_ROULETTE;
 
@@ -108,6 +117,16 @@ vec3 pathTracing(int maxBounce, inout uint seed)
     }
 
     return totalRadiance;
+}
+
+vec3 pathTracing(int maxBounce, inout uint seed)
+{
+    Ray ray = getRayFromCamera(0.001, 10000.0, seed);
+    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
+    if(hitValue.dis < 0.0f) {
+        return vec3(0.0);
+    }
+    return cacNBounceLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.baseColor, -ray.direction, maxBounce - 1, seed);
 }
 
 vec3 getSceneBaseColor(inout uint seed)
@@ -159,20 +178,18 @@ void initialSample(inout uint seed)
     initialSampleBuffer.data[idx].z.n_s.xyz = hitValue.worldNormal;
 
     // 3. cac Lo
-    initialSampleBuffer.data[idx].z.Lo.xyz = cacDirectionalLight(hitValue.worldPos, -ray.direction, hitValue.worldNormal, hitValue.baseColor);
+    initialSampleBuffer.data[idx].z.Lo.xyz = cacNBounceLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.baseColor, -ray.direction, 0, seed);
 
     // 4. store seed
     initialSampleBuffer.data[idx].z.Random = seed;
-
-
 }
 
 void main()
 {
     uint seed = getSeed();
-    initialSample(seed);
+    //initialSample(seed);
 
-    /*
+
     const int SPP = 2;
     const int BOUNCE = 128; 
     vec3 accumaltedColor = vec3(0.0);
@@ -181,5 +198,5 @@ void main()
     }
     vec3 finalColor = accumaltedColor / SPP;
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.f));
-    */
+
 }
