@@ -4,6 +4,8 @@
 
 #define M_PI 3.141592653589793f
 #define RUSSIAN_ROULETTE 0.8f
+#define WIDTH 1280
+#define HEIGHT 760
 
 struct RayPayload{
     vec3 worldNormal;

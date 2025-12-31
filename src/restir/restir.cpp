@@ -11,6 +11,7 @@
 #include "VulkanglTFModel.h"
 
 #include "Light.hpp"
+#include "common.hpp"
 
 class Sponza : public VulkanRaytracingSample
 {
@@ -58,6 +59,10 @@ public:
 	DirectionalLight directionalLight;
 	vks::Buffer lightBuffer;
 
+	vks::Buffer initialSampleBuffer;
+	vks::Buffer temporalSampleBuffer;
+	vks::Buffer spatialSampleBuffer;
+
 	Sponza() : VulkanRaytracingSample()
 	{
 		title = "Restir GI";
@@ -97,10 +102,50 @@ public:
 			shaderBindingTables.hit.destroy();
 			geometryNodesBuffer.destroy();
 			lightBuffer.destroy();
+			initialSampleBuffer.destroy();
+			temporalSampleBuffer.destroy();
+			spatialSampleBuffer.destroy();
 			for (auto& buffer : uniformBuffers) {
 				buffer.destroy();
 			}
 		}
+	}
+
+	void createReservoirBuffer()
+	{
+		std::vector<Reservoir> reservoirBufferData(width * height);
+		vks::Buffer stagingBuffer;
+
+		VK_CHECK_RESULT(vulkanDevice->createBuffer(
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			&stagingBuffer,
+			static_cast<uint32_t>(reservoirBufferData.size()) * sizeof(Reservoir),
+			reservoirBufferData.data()));
+
+		VK_CHECK_RESULT(vulkanDevice->createBuffer(
+			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			&initialSampleBuffer,
+			static_cast<uint32_t>(reservoirBufferData.size()) * sizeof(Reservoir)));
+
+		VK_CHECK_RESULT(vulkanDevice->createBuffer(
+			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			&temporalSampleBuffer,
+			static_cast<uint32_t>(reservoirBufferData.size()) * sizeof(Reservoir)));
+
+		VK_CHECK_RESULT(vulkanDevice->createBuffer(
+			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			&spatialSampleBuffer,
+			static_cast<uint32_t>(reservoirBufferData.size()) * sizeof(Reservoir)));
+
+		vulkanDevice->copyBuffer(&stagingBuffer, &initialSampleBuffer, queue);
+		vulkanDevice->copyBuffer(&stagingBuffer, &temporalSampleBuffer, queue);
+		vulkanDevice->copyBuffer(&stagingBuffer, &spatialSampleBuffer, queue);
+		stagingBuffer.destroy();
+
 	}
 
 	void createAccelerationStructureBuffer(AccelerationStructure& accelerationStructure, VkAccelerationStructureBuildSizesInfoKHR buildSizeInfo)
@@ -417,14 +462,16 @@ public:
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 0),
 			// Binding 1: Ray tracing result image
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 1),
-			// Binding 2: Uniform buffer
+			// Binding 2: Camera buffer
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR, 2),
 			// Binding 3: Light buffer
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR, 3),
 			// Binding 4: Geometry node information SSBO
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, 4),
 			// Binding 5: All images used by the glTF model
-			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, 5, imageCount)
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, 5, imageCount),
+			// Binding 6: Initial Sample Buffer
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 6)
 		};
 
 		// Unbound set
@@ -437,7 +484,8 @@ public:
 			0,
 			0,
 			0,
-			VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT
+			VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT,
+			0
 		};
 		setLayoutBindingFlags.pBindingFlags = descriptorBindingFlags.data();
 
@@ -510,7 +558,7 @@ public:
 	/*
 		Create the descriptor sets used for the ray tracing dispatch
 	*/
-	void createDescriptorSets()
+	void createRayTracingDescriptorSets()
 	{
 		uint32_t imageCount = static_cast<uint32_t>(scene.textures.size());
 		std::vector<VkDescriptorPoolSize> poolSizes = {
@@ -519,7 +567,8 @@ public:
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
             { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
 			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(scene.textures.size()) * maxConcurrentFrames }
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(scene.textures.size()) * maxConcurrentFrames },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames }
 		};
 		//std::cout << "total texture = " << scene.textures.size() << std::endl; // 49
 		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, maxConcurrentFrames);
@@ -565,6 +614,8 @@ public:
 				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &lightBuffer.descriptor),
 				// Binding 4: Geometry node information SSBO
 				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &geometryNodesBuffer.descriptor),
+				// Binding 6: Initial Sample Buffer
+				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6, &initialSampleBuffer.descriptor),
 			};
 
 			// Image descriptors for the variable no. of images of the glTF model
@@ -701,7 +752,8 @@ public:
 		createLightBuffer();
 		createRayTracingPipeline();
 		createShaderBindingTables();
-		createDescriptorSets();
+		createReservoirBuffer();
+		createRayTracingDescriptorSets();
 		prepared = true;
 	}
 

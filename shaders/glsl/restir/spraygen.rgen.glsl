@@ -4,6 +4,7 @@
 #extension GL_EXT_shader_image_load_formatted : enable
 
 #include "spcommon.glsl"
+#include "restircommon.glsl"
 
 layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
 layout(binding = 1, set = 0) uniform image2D image;
@@ -18,6 +19,10 @@ layout(binding = 3, set = 0) buffer DirectionalLight{
     vec3 direction; // 平行光方向 (从光源指向场景)
     vec3 emission;  // 强度/颜色
 } directionalLight;
+
+layout(binding = 6, set = 0) buffer ReservoirBuffer{
+    Reservoir data[];
+}   initialSampleBuffer;
 
 layout(location = 0) rayPayloadEXT RayPayload hitValue;
 
@@ -134,7 +139,7 @@ void main()
 {
     uint seed = getSeed();
     
-    const int SPP = 4;
+    const int SPP = 2;
     const int BOUNCE = 128; 
     vec3 accumaltedColor = vec3(0.0);
     for(int spp = 0; spp < SPP; ++spp){
