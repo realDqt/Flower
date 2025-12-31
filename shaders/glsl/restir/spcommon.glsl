@@ -123,3 +123,8 @@ void cosineSampleHemisphere(vec3 normal, inout uint seed, out vec3 sampleDir, ou
     sampleDir = toWorld(vec3(x, y, z), normal);
     pdf = dot(sampleDir, normal) / M_PI;
 }
+
+uint getCoord1D(uvec2 coords2D)
+{
+    return coords2D.y * WIDTH + coords2D.x;
+}

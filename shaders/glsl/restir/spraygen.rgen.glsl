@@ -135,10 +135,44 @@ void temporalAccumalation(vec3 finalColor)
     }
 }
 
+void initialSample(inout uint seed)
+{
+    // 1. cac x_v and n_v
+    Ray ray = getRayFromCamera(0.001, 10000.0, seed);
+    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
+    if(hitValue.dis < 0.0f) return; // 未命中则提前返回
+    uint idx = getCoord1D(uvec2(gl_LaunchIDEXT.xy));
+    initialSampleBuffer.data[idx].z.x_v.xyz = hitValue.worldPos;
+    initialSampleBuffer.data[idx].z.n_v.xyz = hitValue.worldNormal;
+    // debug
+    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(getNormal01(initialSampleBuffer.data[idx].z.n_v.xyz), 1.f));
+
+    // 2. cac x_s and n_s
+    vec3 sampleDir;
+    float pdf;
+    cosineSampleHemisphere(hitValue.worldNormal, seed, sampleDir, pdf);
+    ray.origin = hitValue.worldPos;
+    ray.direction = sampleDir;
+    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
+    if(hitValue.dis < 0.0f) return; // 未命中则提前返回
+    initialSampleBuffer.data[idx].z.x_s.xyz = hitValue.worldPos;
+    initialSampleBuffer.data[idx].z.n_s.xyz = hitValue.worldNormal;
+
+    // 3. cac Lo
+    initialSampleBuffer.data[idx].z.Lo.xyz = cacDirectionalLight(hitValue.worldPos, -ray.direction, hitValue.worldNormal, hitValue.baseColor);
+
+    // 4. store seed
+    initialSampleBuffer.data[idx].z.Random = seed;
+
+
+}
+
 void main()
 {
     uint seed = getSeed();
-    
+    initialSample(seed);
+
+    /*
     const int SPP = 2;
     const int BOUNCE = 128; 
     vec3 accumaltedColor = vec3(0.0);
@@ -147,4 +181,5 @@ void main()
     }
     vec3 finalColor = accumaltedColor / SPP;
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.f));
+    */
 }
