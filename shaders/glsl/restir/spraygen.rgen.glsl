@@ -27,7 +27,7 @@ layout(binding = 6, set = 0) buffer ReservoirBuffer{
     Reservoir data[];
 }   initialSampleBuffer;
 
-//layout(binding = 7, set = 0) uniform image2D depthImage;
+layout(binding = 7, set = 0) uniform image2D depthImage;
 
 layout(location = 0) rayPayloadEXT RayPayload hitValue;
 
@@ -194,7 +194,7 @@ void initialSample(inout uint seed)
     float cosTheta =  max(dot(ray.direction, cam.forward.xyz), 0.0f);
     cosTheta = 1.0f;
     float zVal = calcNDCZ(hitValue.dis * cosTheta);
-    //imageStore(depthImage, ivec2(gl_LaunchIDEXT.xy), vec4(zVal, 0.0f, 0.0f, 0.0f));
+    imageStore(depthImage, ivec2(gl_LaunchIDEXT.xy), vec4(zVal, 0.0f, 0.0f, 0.0f));
     // debug
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(zVal, zVal, zVal, 1.f));
 
