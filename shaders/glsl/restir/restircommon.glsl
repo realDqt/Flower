@@ -5,7 +5,8 @@ struct Sample {
     vec4 x_s;
     vec4 n_s;
     vec4 Lo;       // .xyz = Lo, .w = unused
-    uint Random;   // Offset 80
+    vec4 baseColor_v;
+    uint Random;   // Offset 96
     uint _pad[3];  // 显式占位，防止隐式 padding
 };
 

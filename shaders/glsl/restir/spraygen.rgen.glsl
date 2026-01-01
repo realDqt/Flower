@@ -12,7 +12,10 @@ layout(binding = 2, set = 0) uniform CameraProperties
 {
     mat4 viewInverse;
     mat4 projInverse;
+    vec4 forward;
     uint frame;
+    float zNear;
+    float zFar;
 } cam;
 
 layout(binding = 3, set = 0) buffer DirectionalLight{
@@ -24,6 +27,8 @@ layout(binding = 6, set = 0) buffer ReservoirBuffer{
     Reservoir data[];
 }   initialSampleBuffer;
 
+//layout(binding = 7, set = 0) uniform image2D depthImage;
+
 layout(location = 0) rayPayloadEXT RayPayload hitValue;
 
 uint getSeed()
@@ -32,12 +37,12 @@ uint getSeed()
 }
 
 // 相机射线生成 (含抗锯齿抖动)
-Ray getRayFromCamera(float tmin, float tmax, inout uint seed)
+Ray getRayFromCamera(float tmin, float tmax, inout uint seed, bool jitter)
 {
     float r1 = rnd(seed);
     float r2 = rnd(seed);
 
-    vec2 subpixel_jitter = cam.frame == 0 ? vec2(0.5f, 0.5f) : vec2(r1, r2);
+    vec2 subpixel_jitter = !jitter || cam.frame == 0 ? vec2(0.5f, 0.5f) : vec2(r1, r2);
     const vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + subpixel_jitter;
     const vec2 inUV = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
     vec2 d = inUV * 2.0 - 1.0;
@@ -55,7 +60,7 @@ Ray getRayFromCamera(float tmin, float tmax, inout uint seed)
 }
 
 // 计算平行光的直接光照贡献
-vec3 cacDirectionalLight(vec3 pos, vec3 wo, vec3 normal, vec4 baseColor)
+vec3 calcDirectionalLight(vec3 pos, vec3 wo, vec3 normal, vec4 baseColor)
 {
     vec3 L_dir = vec3(0.0);
     vec3 wi = normalize(-directionalLight.direction.xyz); // 指向光源的方向
@@ -73,9 +78,9 @@ vec3 cacDirectionalLight(vec3 pos, vec3 wo, vec3 normal, vec4 baseColor)
     return L_dir;
 }
 
-vec3 cacNBounceLighting(vec3 worldPos,  vec3 worldNormal, vec4 baseColor, vec3 wo, int nBounce, inout uint seed)
+vec3 calcNBounceLighting(vec3 worldPos, vec3 worldNormal, vec4 baseColor, vec3 wo, int nBounce, inout uint seed)
 {
-    vec3 totalRadiance = cacDirectionalLight(worldPos, wo, worldNormal, baseColor);
+    vec3 totalRadiance = calcDirectionalLight(worldPos, wo, worldNormal, baseColor);
 
     vec3 sampleDir;
     float pdf;
@@ -96,7 +101,7 @@ vec3 cacNBounceLighting(vec3 worldPos,  vec3 worldNormal, vec4 baseColor, vec3 w
         }
 
         // --- Next Event Estimation for Directional Light ---
-        vec3 directL = cacDirectionalLight(hitValue.worldPos, -ray.direction, hitValue.worldNormal, hitValue.baseColor);
+        vec3 directL = calcDirectionalLight(hitValue.worldPos, -ray.direction, hitValue.worldNormal, hitValue.baseColor);
         totalRadiance += directL * throughput;
 
         // --- BSDF Sampling ---
@@ -121,21 +126,21 @@ vec3 cacNBounceLighting(vec3 worldPos,  vec3 worldNormal, vec4 baseColor, vec3 w
 
 vec3 pathTracing(int maxBounce, inout uint seed)
 {
-    Ray ray = getRayFromCamera(0.001, 10000.0, seed);
+    Ray ray = getRayFromCamera(0.001, 10000.0, seed, true);
     traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
     if(hitValue.dis < 0.0f) {
         return vec3(0.0);
     }
-    return cacNBounceLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.baseColor, -ray.direction, maxBounce - 1, seed);
+    return calcNBounceLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.baseColor, -ray.direction, maxBounce - 1, seed);
 }
 
 vec3 getSceneBaseColor(inout uint seed)
 {
-    Ray ray = getRayFromCamera(0.001, 10000.0, seed);
+    Ray ray = getRayFromCamera(0.001, 512, seed, true);
     traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
     if(hitValue.dis > 0.0f){
-        traceRayEXT(topLevelAS, gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, hitValue.worldPos, ray.tmin, -directionalLight.direction.xyz, ray.tmax, 0);
-        if(hitValue.dis > 0.0f)hitValue.baseColor.rgb *= 0.7f;
+        //traceRayEXT(topLevelAS, gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, hitValue.worldPos, ray.tmin, -directionalLight.direction.xyz, ray.tmax, 0);
+        //if(hitValue.dis > 0.0f)hitValue.baseColor.rgb *= 0.7f;
         return hitValue.baseColor.rgb;
     }else{
         return vec3(0.0f);
@@ -154,19 +159,46 @@ void temporalAccumalation(vec3 finalColor)
     }
 }
 
+float calcNDCZ(float rawLinearDepth)
+{
+    const float zNear = cam.zNear;
+    const float zFar  = cam.zFar;
+    
+    float z_view = rawLinearDepth;
+
+    // 边界检查
+    if(z_view >= zFar) return 1.0f; // Far plane (Vulkan depth is 0..1)
+    if(z_view <= zNear) return 0.0f; // Near plane
+
+    // -----------------------------------------------------------
+    // 2. 投影变换 (Projection Transform)
+    // -----------------------------------------------------------
+    // Vulkan 标准 NDC Z 范围是 [0, 1]。
+    // 公式推导自投影矩阵: Z_ndc = P_22 * Z_view + P_23 * W_view (W_view = 1) / -Z_view
+    // 简化公式: Z_ndc = [f / (f - n)] - [ (f * n) / (z * (f - n)) ]
+
+    return (zFar / (zFar - zNear)) - ((zFar * zNear) / ((zFar - zNear) * z_view));
+}
+
 void initialSample(inout uint seed)
 {
-    // 1. cac x_v and n_v
-    Ray ray = getRayFromCamera(0.001, 10000.0, seed);
+    // 1. calc x_v and n_v
+    Ray ray = getRayFromCamera(0.001, 10000.0, seed, true);
     traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
     if(hitValue.dis < 0.0f) return; // 未命中则提前返回
     uint idx = getCoord1D(uvec2(gl_LaunchIDEXT.xy));
     initialSampleBuffer.data[idx].z.x_v.xyz = hitValue.worldPos;
     initialSampleBuffer.data[idx].z.n_v.xyz = hitValue.worldNormal;
+    initialSampleBuffer.data[idx].z.baseColor_v = hitValue.baseColor; // for final lighting
+    
+    float cosTheta =  max(dot(ray.direction, cam.forward.xyz), 0.0f);
+    cosTheta = 1.0f;
+    float zVal = calcNDCZ(hitValue.dis * cosTheta);
+    //imageStore(depthImage, ivec2(gl_LaunchIDEXT.xy), vec4(zVal, 0.0f, 0.0f, 0.0f));
     // debug
-    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(getNormal01(initialSampleBuffer.data[idx].z.n_v.xyz), 1.f));
+    imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(zVal, zVal, zVal, 1.f));
 
-    // 2. cac x_s and n_s
+    // 2. calc x_s and n_s
     vec3 sampleDir;
     float pdf;
     cosineSampleHemisphere(hitValue.worldNormal, seed, sampleDir, pdf);
@@ -177,8 +209,8 @@ void initialSample(inout uint seed)
     initialSampleBuffer.data[idx].z.x_s.xyz = hitValue.worldPos;
     initialSampleBuffer.data[idx].z.n_s.xyz = hitValue.worldNormal;
 
-    // 3. cac Lo
-    initialSampleBuffer.data[idx].z.Lo.xyz = cacNBounceLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.baseColor, -ray.direction, 0, seed);
+    // 3. calc Lo
+    initialSampleBuffer.data[idx].z.Lo.xyz = calcNBounceLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.baseColor, -ray.direction, 0, seed);
 
     // 4. store seed
     initialSampleBuffer.data[idx].z.Random = seed;
@@ -187,9 +219,9 @@ void initialSample(inout uint seed)
 void main()
 {
     uint seed = getSeed();
-    //initialSample(seed);
+    initialSample(seed);
 
-
+    /*
     const int SPP = 2;
     const int BOUNCE = 128; 
     vec3 accumaltedColor = vec3(0.0);
@@ -198,5 +230,5 @@ void main()
     }
     vec3 finalColor = accumaltedColor / SPP;
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.f));
-
+    */
 }

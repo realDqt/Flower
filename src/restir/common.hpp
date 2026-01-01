@@ -11,13 +11,11 @@ struct Sample
     glm::vec4 n_v;       // Offset 16
     glm::vec4 x_s;       // Offset 32
     glm::vec4 n_s;       // Offset 48
-    
-    // 把 Lo 和 Random 压缩到一个 vec4 里？
-    // 或者保持原样但用 vec4 占位
     glm::vec4 Lo;        // Offset 64 (w分量闲置，或者存Random?)
+    glm::vec4 baseColor_v;
     
-    uint32_t Random;     // Offset 80 (紧跟在 Lo 的 16字节之后)
-    uint32_t _pad[3];    // Offset 84-96 (手动填充到 16 字节对齐)
+    uint32_t Random;     // Offset 96 (紧跟在 Lo 的 16字节之后)
+    uint32_t _pad[3];    // Offset 100-112 (手动填充到 16 字节对齐)
 };
 
 // 确保 C++ 编译器对 Sample 的理解也是 16 字节对齐
@@ -25,9 +23,9 @@ static_assert(sizeof(Sample) % 16 == 0, "Sample size alignment error");
 
 struct Reservoir
 {
-    Sample z;            // Offset 0, Size 96
-    float w = 0.0f;             // Offset 96
-    uint32_t M = 0;          // Offset 100
-    float W = 0.0f;             // Offset 104
-    uint32_t _pad;       // Offset 108-112 (手动填充，凑整结构体)
+    Sample z;            // Offset 0, Size 112
+    float w = 0.0f;             // Offset 112
+    uint32_t M = 0;          // Offset 116
+    float W = 0.0f;             // Offset 120
+    uint32_t _pad;       // Offset 124-128 (手动填充，凑整结构体)
 };
