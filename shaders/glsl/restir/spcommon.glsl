@@ -78,9 +78,15 @@ float rnd(inout uint previous)
     return (float(lcg(previous)) / float(0x01000000));
 }
 
-vec3 getNormal01(vec3 v)
+vec3 encodeNormal(vec3 v)
 {
     v = (v + vec3(1.0)) * vec3(0.5);
+    return v;
+}
+
+vec3 decodeNormal(vec3 v)
+{
+    v = v * 2.0f - 1.0f;
     return v;
 }
 

@@ -28,6 +28,7 @@ layout(binding = 6, set = 0) buffer ReservoirBuffer{
 }   initialSampleBuffer;
 
 layout(binding = 7, set = 0) uniform image2D depthImage;
+layout(binding = 8, set = 0) uniform image2D normalImage;
 
 layout(location = 0) rayPayloadEXT RayPayload hitValue;
 
@@ -195,6 +196,7 @@ void initialSample(inout uint seed)
     cosTheta = 1.0f;
     float zVal = calcNDCZ(hitValue.dis * cosTheta);
     imageStore(depthImage, ivec2(gl_LaunchIDEXT.xy), vec4(zVal, 0.0f, 0.0f, 0.0f));
+    imageStore(normalImage, ivec2(gl_LaunchIDEXT.xy), vec4(encodeNormal(hitValue.worldNormal), 0.0f));
     // debug
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(zVal, zVal, zVal, 1.f));
 

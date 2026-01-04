@@ -1,13 +1,3 @@
-/*
-* Vulkan Example - Hardware accelerated ray tracing example for doing reflections
-*
-* Renders a complex scene doing recursion inside the shaders for creating reflections
-*
-* Copyright (C) 2019-2025 by Sascha Willems - www.saschawillems.de
-*
-* This code is licensed under the MIT license (MIT) (http://opensource.org/licenses/MIT)
-*/
-
 #include "VulkanRaytracingSample.h"
 #include "VulkanObjModel.h"
 

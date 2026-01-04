@@ -1,7 +1,10 @@
-﻿#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/glm.hpp>
+﻿#ifndef COMMON_HPP
+#define COMMON_HPP
+#include "VulkanRaytracingSample.h"
+#define VK_GLTF_MATERIAL_IDS
+#include "VulkanglTFModel.h"
+
+#include "Light.hpp"
 
 // 强制所有 vec3 升级为 vec4，确保 100% 内存安全
 struct Sample
@@ -29,3 +32,4 @@ struct Reservoir
     float W = 0.0f;             // Offset 120
     uint32_t _pad;       // Offset 124-128 (手动填充，凑整结构体)
 };
+#endif
