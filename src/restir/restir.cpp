@@ -48,6 +48,9 @@ public:
 	} frameData;
 	std::array<vks::Buffer, maxConcurrentFrames> frameDataUniformBuffers;
 
+	TemporalReuseCompute temporalReuseCompute;
+	uint32_t pingPongIdx = 0;
+
 	VkPipeline pipeline{ VK_NULL_HANDLE };
 	VkPipelineLayout pipelineLayout{ VK_NULL_HANDLE };
 	VkDescriptorSetLayout descriptorSetLayout{ VK_NULL_HANDLE };
@@ -61,8 +64,8 @@ public:
 	vks::Buffer lightBuffer;
 
 	vks::Buffer initialSampleBuffer;
-	vks::Buffer temporalSampleBuffer;
-	vks::Buffer spatialSampleBuffer;
+	vks::Buffer temporalSampleBuffer[2];
+	vks::Buffer spatialSampleBuffer[2];
 
 	Sponza() : VulkanRaytracingSample()
 	{
@@ -106,8 +109,20 @@ public:
 			geometryNodesBuffer.destroy();
 			lightBuffer.destroy();
 			initialSampleBuffer.destroy();
-			temporalSampleBuffer.destroy();
-			spatialSampleBuffer.destroy();
+			
+			temporalSampleBuffer[0].destroy();
+			spatialSampleBuffer[0].destroy();
+			temporalSampleBuffer[1].destroy();
+			spatialSampleBuffer[1].destroy();
+			
+			vkDestroyPipeline(device, temporalReuseCompute.pipeline, nullptr);
+			vkDestroyPipelineLayout(device, temporalReuseCompute.pipelineLayout, nullptr);
+			vkDestroyDescriptorSetLayout(device, temporalReuseCompute.descriptorSetLayout, nullptr);
+			vkDestroyCommandPool(device, temporalReuseCompute.commandPool, nullptr);
+			for (auto& fence : temporalReuseCompute.fences) {
+				vkDestroyFence(device, fence, nullptr);
+			}
+			
 			for (auto& buffer : cameraPropertiesUniformBuffers) {
 				buffer.destroy();
 			}
@@ -193,24 +208,26 @@ public:
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			&initialSampleBuffer,
 			static_cast<uint32_t>(reservoirBufferData.size()) * sizeof(Reservoir)));
-
-		VK_CHECK_RESULT(vulkanDevice->createBuffer(
-			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			&temporalSampleBuffer,
-			static_cast<uint32_t>(reservoirBufferData.size()) * sizeof(Reservoir)));
-
-		VK_CHECK_RESULT(vulkanDevice->createBuffer(
-			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			&spatialSampleBuffer,
-			static_cast<uint32_t>(reservoirBufferData.size()) * sizeof(Reservoir)));
-
 		vulkanDevice->copyBuffer(&stagingBuffer, &initialSampleBuffer, queue);
-		vulkanDevice->copyBuffer(&stagingBuffer, &temporalSampleBuffer, queue);
-		vulkanDevice->copyBuffer(&stagingBuffer, &spatialSampleBuffer, queue);
-		stagingBuffer.destroy();
+		
+		for (int i = 0; i < 2; ++i)
+		{
+			VK_CHECK_RESULT(vulkanDevice->createBuffer(
+				VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				&temporalSampleBuffer[i],
+				static_cast<uint32_t>(reservoirBufferData.size()) * sizeof(Reservoir)));
 
+			VK_CHECK_RESULT(vulkanDevice->createBuffer(
+				VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				&spatialSampleBuffer[i],
+				static_cast<uint32_t>(reservoirBufferData.size()) * sizeof(Reservoir)));
+
+			vulkanDevice->copyBuffer(&stagingBuffer, &temporalSampleBuffer[i], queue);
+			vulkanDevice->copyBuffer(&stagingBuffer, &spatialSampleBuffer[i], queue);
+		}
+		stagingBuffer.destroy();
 	}
 
 	void createAccelerationStructureBuffer(AccelerationStructure& accelerationStructure, VkAccelerationStructureBuildSizesInfoKHR buildSizeInfo)
@@ -484,17 +501,6 @@ public:
 
 	/*
 		Create the Shader Binding Tables that binds the programs and top-level acceleration structure
-
-		SBT Layout used in this sample:
-
-			/-----------\
-			| raygen    |
-			|-----------|
-			| miss		|
-			|-----------|
-			| hit		|
-			\-----------/
-
 	*/
 	void createShaderBindingTables() {
 		const uint32_t handleSize = rayTracingPipelineProperties.shaderGroupHandleSize;
@@ -590,9 +596,9 @@ public:
 			VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
 			shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
 			shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-            shaderGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
-            shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
-            shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+			shaderGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
+			shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
+			shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
 
 			shaderGroup.generalShader = static_cast<uint32_t>(shaderStages.size()) - 1;
 			shaderGroups.push_back(shaderGroup);
@@ -637,10 +643,17 @@ public:
 			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(scene.textures.size()) * maxConcurrentFrames },
 				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
 				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
-				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames }
+				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
+			// --------------------------temporal reuse--------------------------------
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames * 3 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames * 2},
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
 		};
 		//std::cout << "total texture = " << scene.textures.size() << std::endl; // 49
-		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, maxConcurrentFrames);
+		// initial sample pass
+		// temporal reuse pass
+		// spatial reuse pass
+		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, maxConcurrentFrames * 3);
 		VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolCreateInfo, nullptr, &descriptorPool));
 	}
 	/*
@@ -764,6 +777,91 @@ public:
 		stagingBuffer.destroy();
 	}
 
+	void prepareTemporalReuseCompute()
+	{
+		// Create a compute capable device queue
+		// The VulkanDevice::createLogicalDevice functions finds a compute capable queue and prefers queue families that only support compute
+		// Depending on the implementation this may result in different queue family indices for graphics and computes,
+		// requiring proper synchronization (see the memory barriers in buildComputeCommandBuffer)
+		VkDeviceQueueCreateInfo queueCreateInfo = {};
+		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queueCreateInfo.pNext = NULL;
+		queueCreateInfo.queueFamilyIndex = vulkanDevice->queueFamilyIndices.compute;
+		queueCreateInfo.queueCount = 1;
+		vkGetDeviceQueue(device, vulkanDevice->queueFamilyIndices.compute, 0, &temporalReuseCompute.queue);
+
+		// Separate command pool as queue family for compute may be different from the graphics one
+		VkCommandPoolCreateInfo cmdPoolInfo = {};
+		cmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+		cmdPoolInfo.queueFamilyIndex = vulkanDevice->queueFamilyIndices.compute;
+		cmdPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+		VK_CHECK_RESULT(vkCreateCommandPool(device, &cmdPoolInfo, nullptr, &temporalReuseCompute.commandPool));
+
+		// Some objects need to be duplicated per frames in flight
+
+		// Create command buffers for compute operations
+		VkCommandBufferAllocateInfo cmdBufAllocateInfo = vks::initializers::commandBufferAllocateInfo(temporalReuseCompute.commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
+		for (auto& commandBuffer : temporalReuseCompute.commandBuffers) {
+			VK_CHECK_RESULT(vkAllocateCommandBuffers(device, &cmdBufAllocateInfo, &commandBuffer));
+		}
+
+		// Fences for compute CB sync
+		for (auto& fence : temporalReuseCompute.fences) {
+			VkFenceCreateInfo fenceCreateInfo = vks::initializers::fenceCreateInfo(VK_FENCE_CREATE_SIGNALED_BIT);
+			VK_CHECK_RESULT(vkCreateFence(device, &fenceCreateInfo, nullptr, &fence));
+		}
+
+		// Setup descriptors
+		std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 0),
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 1),
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 2),
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 3),
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 4),
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 5),
+		};
+		VkDescriptorSetLayoutCreateInfo descriptorLayout = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
+		VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorLayout, nullptr,	&temporalReuseCompute.descriptorSetLayout));
+
+		// Sets per frame in flight as the uniform buffer is written by the CPU and read by the GPU
+		// Images and static SSBO with scene data do not need to be duplicated per frame, we reuse the same one for each frame
+		VkDescriptorImageInfo depthImageDescriptor{ VK_NULL_HANDLE, depthImage.view, VK_IMAGE_LAYOUT_GENERAL };
+		VkDescriptorImageInfo normalImageDescriptor{ VK_NULL_HANDLE, normalImage.view, VK_IMAGE_LAYOUT_GENERAL };
+		for (auto i = 0; i < maxConcurrentFrames; i++) {
+			VkDescriptorSetAllocateInfo allocInfo = vks::initializers::descriptorSetAllocateInfo(descriptorPool, &temporalReuseCompute.descriptorSetLayout, 1);
+			VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &allocInfo, &temporalReuseCompute.descriptorSets[i]));
+			std::vector<VkWriteDescriptorSet> computeWriteDescriptorSets = {
+				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 0, &initialSampleBuffer.descriptor),
+				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3, &depthImageDescriptor),
+				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4, &normalImageDescriptor),
+				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 5, &frameDataUniformBuffers[i].descriptor),
+			};
+			// TODO: ping pong update temporal buffer
+			vkUpdateDescriptorSets(device, static_cast<uint32_t>(computeWriteDescriptorSets.size()), computeWriteDescriptorSets.data(), 0, nullptr);
+		}
+
+		// Create the compute shader pipeline
+		VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = vks::initializers::pipelineLayoutCreateInfo(&temporalReuseCompute.descriptorSetLayout, 1);
+		VK_CHECK_RESULT(vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr, &temporalReuseCompute.pipelineLayout));
+
+		VkComputePipelineCreateInfo computePipelineCreateInfo = vks::initializers::computePipelineCreateInfo(temporalReuseCompute.pipelineLayout, 0);
+		computePipelineCreateInfo.stage = loadShader(getShadersPath() + "restir/temporalreuse.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
+		VK_CHECK_RESULT(vkCreateComputePipelines(device, pipelineCache, 1, &computePipelineCreateInfo, nullptr, &temporalReuseCompute.pipeline));
+	}
+
+	void updatePingPongDescriptorSets()
+	{
+		// ----------------------------temporal reuse --------------------------------
+		for (auto i = 0; i < maxConcurrentFrames; i++) {
+			std::vector<VkWriteDescriptorSet> computeWriteDescriptorSets = {
+				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, &temporalSampleBuffer[pingPongIdx].descriptor),
+				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &temporalSampleBuffer[1 - pingPongIdx].descriptor),
+			};
+			vkUpdateDescriptorSets(device, static_cast<uint32_t>(computeWriteDescriptorSets.size()), computeWriteDescriptorSets.data(), 0, nullptr);
+		}
+		pingPongIdx = 1 - pingPongIdx;
+	}
+
 	/*
 		If the window has been resized, we need to recreate the storage image and it's descriptor
 	*/
@@ -847,6 +945,8 @@ public:
 		
 		createDescriptorPool();
 		createRayTracingDescriptorSets();
+
+		prepareTemporalReuseCompute();
 		prepared = true;
 	}
 
