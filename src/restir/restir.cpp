@@ -48,7 +48,7 @@ public:
 	} frameData;
 	std::array<vks::Buffer, maxConcurrentFrames> frameDataUniformBuffers;
 
-	TemporalReuseCompute temporalReuseCompute;
+	SpatialTemporalReuseCompute temporalReuseCompute;
 	uint32_t pingPongIdx = 0;
 
 	VkPipeline pipeline{ VK_NULL_HANDLE };
