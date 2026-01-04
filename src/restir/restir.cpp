@@ -998,6 +998,39 @@ public:
 			height,
 			1);
 
+
+		// ray tracing shader与compute shader同步
+		VkMemoryBarrier bufferBarrier = {};
+		bufferBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+		bufferBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT; 
+		bufferBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;  
+		
+		VkImageMemoryBarrier depthBarrier = {};
+		depthBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		depthBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+		depthBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		depthBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+		depthBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+		depthBarrier.image = depthImage.image;
+		depthBarrier.subresourceRange = subresourceRange;
+		depthBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		depthBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+		VkImageMemoryBarrier normalBarrier = depthBarrier;
+		normalBarrier.image = normalImage.image;
+
+		VkImageMemoryBarrier imageBarriers[] = { depthBarrier, normalBarrier };
+
+		vkCmdPipelineBarrier(
+			cmdBuffer,
+			VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, 
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,         
+			0,                                            
+			1, &bufferBarrier,                            
+			0, nullptr,
+			2, imageBarriers                              
+		);
+		
 		// -----------------------------temporal reuse---------------------------------
 		vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, temporalReuseCompute.pipeline);
 
