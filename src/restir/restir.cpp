@@ -751,6 +751,25 @@ public:
 			VK_CHECK_RESULT(buffer.map());
 		}
 	}
+	
+	void updateFrameDataBuffer()
+	{
+		static glm::mat4 prevViewProjMat = glm::mat4(1.0f);
+		if (frameData.frame == 0) {
+			prevViewProjMat = camera.matrices.perspective * camera.matrices.view;
+		}
+
+		glm::mat4 view = camera.matrices.view;
+		glm::mat4 proj = camera.matrices.perspective;
+		glm::mat4 viewProj = proj * view;
+		glm::mat4 invViewProj = glm::inverse(viewProj);
+
+		frameData.currentInvViewProj = invViewProj;
+		frameData.prevViewProj = prevViewProjMat; 
+		frameData.frame = cameraProperties.frame;
+		memcpy(frameDataUniformBuffers[currentBuffer].mapped, &frameData, sizeof(FrameData));
+		prevViewProjMat = viewProj;
+	}
 
 	void createLightBuffer()
 	{
@@ -980,7 +999,31 @@ public:
 			1);
 
 		// -----------------------------temporal reuse---------------------------------
-		
+		vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, temporalReuseCompute.pipeline);
+
+		vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, temporalReuseCompute.pipelineLayout, 0, 1, &temporalReuseCompute.descriptorSets[currentBuffer], 0, 0);
+		uint32_t groupX = (width + 15) / 16;
+		uint32_t groupY = (height + 15) / 16;
+		vkCmdDispatch(cmdBuffer, groupX, groupY, 1);
+
+
+		// ========================================================================
+		// Synchronization: Barrier (Compute Write -> Transfer/Graphics Read)
+		// ========================================================================
+		VkMemoryBarrier computeFinishBarrier = {};
+		computeFinishBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+		computeFinishBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+		computeFinishBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
+
+		vkCmdPipelineBarrier(
+			cmdBuffer,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+			0,
+			1, &computeFinishBarrier,
+			0, nullptr,
+			0, nullptr
+		);
 		/*
 			Copy ray tracing output to swap chain image
 		*/
@@ -1040,6 +1083,8 @@ public:
 			// If the camera's view has been updated we need to  reset the frame accumulation (which is used for transparent surfaces and anti-aliasing)
 			cameraProperties.frame = -1;
 		}
+		updateFrameDataBuffer(); 
+		updatePingPongDescriptorSets();
 		updateUniformBuffers();
 		buildCommandBuffer();
 		VulkanExampleBase::submitFrame();
