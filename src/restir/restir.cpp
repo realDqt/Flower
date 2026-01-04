@@ -30,15 +30,23 @@ public:
 
 	vks::Texture2D texture;
 
-	struct UniformData {
+	struct CameraProperties {
 		glm::mat4 viewInverse;
 		glm::mat4 projInverse;
 		glm::vec4 forward;
 		uint32_t frame{ 0 };
 		float zNear = 0.1f;
 		float zFar = 512.0f;
-	} uniformData;
-	std::array<vks::Buffer, maxConcurrentFrames> uniformBuffers;
+	} cameraProperties;
+	std::array<vks::Buffer, maxConcurrentFrames> cameraPropertiesUniformBuffers;
+
+	struct FrameData
+	{
+		glm::mat4 currentInvViewProj;
+		glm::mat4 prevViewProj;
+		uint32_t frame;
+	} frameData;
+	std::array<vks::Buffer, maxConcurrentFrames> frameDataUniformBuffers;
 
 	VkPipeline pipeline{ VK_NULL_HANDLE };
 	VkPipelineLayout pipelineLayout{ VK_NULL_HANDLE };
@@ -100,7 +108,7 @@ public:
 			initialSampleBuffer.destroy();
 			temporalSampleBuffer.destroy();
 			spatialSampleBuffer.destroy();
-			for (auto& buffer : uniformBuffers) {
+			for (auto& buffer : cameraPropertiesUniformBuffers) {
 				buffer.destroy();
 			}
 		}
@@ -482,9 +490,9 @@ public:
 			/-----------\
 			| raygen    |
 			|-----------|
-			| miss + shadow     |
+			| miss		|
 			|-----------|
-			| hit + any |
+			| hit		|
 			\-----------/
 
 	*/
@@ -617,26 +625,30 @@ public:
 		VK_CHECK_RESULT(vkCreateRayTracingPipelinesKHR(device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &rayTracingPipelineCI, nullptr, &pipeline));
 	}
 
+	void createDescriptorPool()
+	{
+		std::vector<VkDescriptorPoolSize> poolSizes = {
+			// ------------------------initial sampling------------------------------
+			{ VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxConcurrentFrames },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(scene.textures.size()) * maxConcurrentFrames },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames }
+		};
+		//std::cout << "total texture = " << scene.textures.size() << std::endl; // 49
+		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, maxConcurrentFrames);
+		VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolCreateInfo, nullptr, &descriptorPool));
+	}
 	/*
 		Create the descriptor sets used for the ray tracing dispatch
 	*/
 	void createRayTracingDescriptorSets()
 	{
 		uint32_t imageCount = static_cast<uint32_t>(scene.textures.size());
-		std::vector<VkDescriptorPoolSize> poolSizes = {
-			{ VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxConcurrentFrames },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(scene.textures.size()) * maxConcurrentFrames },
-				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
-				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
-                { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames }
-		};
-		//std::cout << "total texture = " << scene.textures.size() << std::endl; // 49
-		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, maxConcurrentFrames);
-		VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolCreateInfo, nullptr, &descriptorPool));
 
 		VkDescriptorSetVariableDescriptorCountAllocateInfoEXT variableDescriptorCountAllocInfo{};
 		uint32_t variableDescCounts[] = { imageCount };
@@ -675,7 +687,7 @@ public:
 				// Binding 1: Ray tracing result image
 				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &storageImageDescriptor),
 				// Binding 2: Uniform data
-				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2, &uniformBuffers[i].descriptor),
+				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2, &cameraPropertiesUniformBuffers[i].descriptor),
 				// Binding 3: light Data
 				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &lightBuffer.descriptor),
 				// Binding 4: Geometry node information SSBO
@@ -716,8 +728,13 @@ public:
 	*/
 	void createUniformBuffer()
 	{
-		for (auto& buffer : uniformBuffers) {
-			VK_CHECK_RESULT(vulkanDevice->createBuffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &buffer, sizeof(UniformData), &uniformData));
+		for (auto& buffer : cameraPropertiesUniformBuffers) {
+			VK_CHECK_RESULT(vulkanDevice->createBuffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &buffer, sizeof(CameraProperties), &cameraProperties));
+			VK_CHECK_RESULT(buffer.map());
+		}
+
+		for (auto& buffer : frameDataUniformBuffers) {
+			VK_CHECK_RESULT(vulkanDevice->createBuffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &buffer, sizeof(FrameData), &frameData));
 			VK_CHECK_RESULT(buffer.map());
 		}
 	}
@@ -765,15 +782,15 @@ public:
 
 	void updateUniformBuffers()
 	{
-		uniformData.projInverse = glm::inverse(camera.matrices.perspective);
-		uniformData.viewInverse = glm::inverse(camera.matrices.view);
-		uniformData.forward = glm::vec4(camera.getForward(), 0.0f);
+		cameraProperties.projInverse = glm::inverse(camera.matrices.perspective);
+		cameraProperties.viewInverse = glm::inverse(camera.matrices.view);
+		cameraProperties.forward = glm::vec4(camera.getForward(), 0.0f);
 		// This value is used to accumulate multiple frames into the finale picture
 		// It's required as ray tracing needs to do multiple passes for transparency
 		// In this sample we use noise offset by this frame index to shoot rays for transparency into different directions
 		// Once enough frames with random ray directions have been accumulated, it looks like proper transparency
-		uniformData.frame++;
-		memcpy(uniformBuffers[currentBuffer].mapped, &uniformData, sizeof(UniformData));
+		cameraProperties.frame++;
+		memcpy(cameraPropertiesUniformBuffers[currentBuffer].mapped, &cameraProperties, sizeof(CameraProperties));
 	}
 
 	void getEnabledFeatures()
@@ -823,9 +840,12 @@ public:
 		createRestirStorageImage(normalImage, VK_FORMAT_R32G32B32A32_SFLOAT, { width, height, 1 });
 		createUniformBuffer();
 		createLightBuffer();
+		createReservoirBuffer();
+		
 		createRayTracingPipeline();
 		createShaderBindingTables();
-		createReservoirBuffer();
+		
+		createDescriptorPool();
 		createRayTracingDescriptorSets();
 		prepared = true;
 	}
@@ -844,10 +864,7 @@ public:
 		VkImageSubresourceRange subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
 
 		VK_CHECK_RESULT(vkBeginCommandBuffer(cmdBuffer, &cmdBufInfo));
-
-		/*
-			Dispatch the ray tracing commands
-		*/
+		// -----------------------------initial sampling---------------------------------
 		vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
 		vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipelineLayout, 0, 1, &descriptorSets[currentBuffer], 0, 0);
 
@@ -862,6 +879,8 @@ public:
 			height,
 			1);
 
+		// -----------------------------temporal reuse---------------------------------
+		
 		/*
 			Copy ray tracing output to swap chain image
 		*/
@@ -919,7 +938,7 @@ public:
 		VulkanExampleBase::prepareFrame();
 		if (camera.updated) {
 			// If the camera's view has been updated we need to  reset the frame accumulation (which is used for transparent surfaces and anti-aliasing)
-			uniformData.frame = -1;
+			cameraProperties.frame = -1;
 		}
 		updateUniformBuffers();
 		buildCommandBuffer();

@@ -32,4 +32,21 @@ struct Reservoir
     float W = 0.0f;             // Offset 120
     uint32_t _pad;       // Offset 124-128 (手动填充，凑整结构体)
 };
+
+
+// Resources for the compute part of the example
+struct TemporalReuseCompute {
+    VkQueue queue{ VK_NULL_HANDLE };									// Separate queue for compute commands (queue family may differ from the one used for graphics)
+    VkCommandPool commandPool{ VK_NULL_HANDLE };						// Use a separate command pool (queue family may differ from the one used for graphics)
+    std::array<VkCommandBuffer, maxConcurrentFrames> commandBuffers;	// Command buffers storing the dispatch commands and barriers
+    std::array<VkFence, maxConcurrentFrames> fences;					// Synchronization fence to avoid rewriting compute CB if still in use
+    VkDescriptorSetLayout descriptorSetLayout{ VK_NULL_HANDLE };		// Compute shader binding layout
+    VkPipelineLayout pipelineLayout{ VK_NULL_HANDLE };					// Layout of the compute pipeline
+    VkPipeline pipeline{ VK_NULL_HANDLE };								// Compute raytracing pipeline
+    // Uniform buffer object containing scene parameters
+    // These need to be per frames in flight, as CPU writes to while GPU reads from
+    std::array<vks::Buffer, maxConcurrentFrames> uniformBuffers;
+    std::array<VkDescriptorSet, maxConcurrentFrames> descriptorSets{};
+};
+
 #endif
