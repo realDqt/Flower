@@ -6,12 +6,8 @@ public:
 	AccelerationStructure bottomLevelAS{};
 	AccelerationStructure topLevelAS{};
 
-	struct DepthImage {
-		VkDeviceMemory memory{ VK_NULL_HANDLE };
-		VkImage image{ VK_NULL_HANDLE };
-		VkImageView view{ VK_NULL_HANDLE };
-		VkFormat format;
-	}  depthImage;
+	StorageImage depthImage;
+	StorageImage normalImage;
 
 	vks::Buffer vertexBuffer;
 	vks::Buffer indexBuffer;
@@ -90,7 +86,8 @@ public:
 			vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 			vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 			deleteStorageImage();
-			deleteDepthImage();
+			deleteRestirStorageImage(depthImage);
+			deleteRestirStorageImage(normalImage);
 			deleteAccelerationStructure(bottomLevelAS);
 			deleteAccelerationStructure(topLevelAS);
 			vertexBuffer.destroy();
@@ -109,14 +106,14 @@ public:
 		}
 	}
 
-	void createDepthImage(VkFormat format, VkExtent3D extent)
+	void createRestirStorageImage(StorageImage& restirStorageImage, VkFormat format, VkExtent3D extent)
 	{
 		// Release ressources if image is to be recreated
-		if (depthImage.image != VK_NULL_HANDLE) {
-			vkDestroyImageView(device, depthImage.view, nullptr);
-			vkDestroyImage(device, depthImage.image, nullptr);
-			vkFreeMemory(device, depthImage.memory, nullptr);
-			depthImage = {};
+		if (restirStorageImage.image != VK_NULL_HANDLE) {
+			vkDestroyImageView(device, restirStorageImage.view, nullptr);
+			vkDestroyImage(device, restirStorageImage.image, nullptr);
+			vkFreeMemory(device, restirStorageImage.memory, nullptr);
+			restirStorageImage = {};
 		}
 
 		VkImageCreateInfo image{
@@ -131,19 +128,19 @@ public:
 			.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
 			.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
 		};
-		VK_CHECK_RESULT(vkCreateImage(vulkanDevice->logicalDevice, &image, nullptr, &depthImage.image));
+		VK_CHECK_RESULT(vkCreateImage(vulkanDevice->logicalDevice, &image, nullptr, &restirStorageImage.image));
 
 		VkMemoryRequirements memReqs;
-		vkGetImageMemoryRequirements(vulkanDevice->logicalDevice, depthImage.image, &memReqs);
+		vkGetImageMemoryRequirements(vulkanDevice->logicalDevice, restirStorageImage.image, &memReqs);
 		VkMemoryAllocateInfo memoryAllocateInfo = vks::initializers::memoryAllocateInfo();
 		memoryAllocateInfo.allocationSize = memReqs.size;
 		memoryAllocateInfo.memoryTypeIndex = vulkanDevice->getMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-		VK_CHECK_RESULT(vkAllocateMemory(vulkanDevice->logicalDevice, &memoryAllocateInfo, nullptr, &depthImage.memory));
-		VK_CHECK_RESULT(vkBindImageMemory(vulkanDevice->logicalDevice, depthImage.image, depthImage.memory, 0));
+		VK_CHECK_RESULT(vkAllocateMemory(vulkanDevice->logicalDevice, &memoryAllocateInfo, nullptr, &restirStorageImage.memory));
+		VK_CHECK_RESULT(vkBindImageMemory(vulkanDevice->logicalDevice, restirStorageImage.image, restirStorageImage.memory, 0));
 
 		VkImageViewCreateInfo colorImageView{
 			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-			.image = depthImage.image,
+			.image = restirStorageImage.image,
 			.viewType = VK_IMAGE_VIEW_TYPE_2D,
 			.format = format,
 			.subresourceRange = {
@@ -154,21 +151,21 @@ public:
 				.layerCount = 1
 			},
 		};
-		VK_CHECK_RESULT(vkCreateImageView(vulkanDevice->logicalDevice, &colorImageView, nullptr, &depthImage.view));
+		VK_CHECK_RESULT(vkCreateImageView(vulkanDevice->logicalDevice, &colorImageView, nullptr, &restirStorageImage.view));
 
 		VkCommandBuffer cmdBuffer = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
-		vks::tools::setImageLayout(cmdBuffer, depthImage.image,
+		vks::tools::setImageLayout(cmdBuffer, restirStorageImage.image,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_GENERAL,
 			{ VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
 		vulkanDevice->flushCommandBuffer(cmdBuffer, queue);
 	}
 
-	void deleteDepthImage()
+	void deleteRestirStorageImage(StorageImage& restirStorageImage)
 	{
-		vkDestroyImageView(vulkanDevice->logicalDevice, depthImage.view, nullptr);
-		vkDestroyImage(vulkanDevice->logicalDevice, depthImage.image, nullptr);
-		vkFreeMemory(vulkanDevice->logicalDevice, depthImage.memory, nullptr);
+		vkDestroyImageView(vulkanDevice->logicalDevice, restirStorageImage.view, nullptr);
+		vkDestroyImage(vulkanDevice->logicalDevice, restirStorageImage.image, nullptr);
+		vkFreeMemory(vulkanDevice->logicalDevice, restirStorageImage.memory, nullptr);
 	}
 	
 	void createReservoirBuffer()
@@ -533,13 +530,14 @@ public:
 			// Binding 6: Initial Sample Buffer
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 6),
 			// Binding 7: Depth Image
-			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 7)
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 7),
+			// Binding 8: Normal Image
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 8)
 		};
 
 		// Unbound set
 		VkDescriptorSetLayoutBindingFlagsCreateInfoEXT setLayoutBindingFlags{};
 		setLayoutBindingFlags.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT;
-		setLayoutBindingFlags.bindingCount = 6;
 		std::vector<VkDescriptorBindingFlagsEXT> descriptorBindingFlags = {
 			0,
 			0,
@@ -548,10 +546,11 @@ public:
 			0,
 			VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT,
 			0,
+			0,
 			0
 		};
 		setLayoutBindingFlags.pBindingFlags = descriptorBindingFlags.data();
-
+		setLayoutBindingFlags.bindingCount = descriptorBindingFlags.size();
 		VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
 		descriptorSetLayoutCI.pNext = &setLayoutBindingFlags;
 		VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr, &descriptorSetLayout));
@@ -632,7 +631,8 @@ public:
 			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
 			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(scene.textures.size()) * maxConcurrentFrames },
 				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
-				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames }
+				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
+                { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames }
 		};
 		//std::cout << "total texture = " << scene.textures.size() << std::endl; // 49
 		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, maxConcurrentFrames);
@@ -667,6 +667,7 @@ public:
 
 			VkDescriptorImageInfo storageImageDescriptor{ VK_NULL_HANDLE, storageImage.view, VK_IMAGE_LAYOUT_GENERAL };
 			VkDescriptorImageInfo depthImageDescriptor{ VK_NULL_HANDLE, depthImage.view, VK_IMAGE_LAYOUT_GENERAL };
+			VkDescriptorImageInfo normalImageDescriptor{ VK_NULL_HANDLE, normalImage.view, VK_IMAGE_LAYOUT_GENERAL };
 
 			std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
 				// Binding 0: Top level acceleration structure
@@ -682,7 +683,9 @@ public:
 				// Binding 6: Initial Sample Buffer
 				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6, &initialSampleBuffer.descriptor),
 				// Binding 7: Depth Image
-				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7, &depthImageDescriptor)
+				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7, &depthImageDescriptor),
+				// Binding 8: Normal Image
+				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8, &normalImageDescriptor)
 			};
 
 			// Image descriptors for the variable no. of images of the glTF model
@@ -816,7 +819,8 @@ public:
 		createTopLevelAccelerationStructure();
 
 		createStorageImage(swapChain.colorFormat, { width, height, 1 });
-		createDepthImage(VK_FORMAT_R32_SFLOAT, { width, height, 1 });
+		createRestirStorageImage(depthImage, VK_FORMAT_R32_SFLOAT, { width, height, 1 });
+		createRestirStorageImage(normalImage, VK_FORMAT_R32G32B32A32_SFLOAT, { width, height, 1 });
 		createUniformBuffer();
 		createLightBuffer();
 		createRayTracingPipeline();

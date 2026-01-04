@@ -1,4 +1,5 @@
 // 先include "spcommon.glsl"
+#define MAX_HISTORY 20
 struct Sample {
     vec4 x_v;
     vec4 n_v;
@@ -18,7 +19,7 @@ struct Reservoir {
     uint _pad;
 };
 
-void UpdateReservoir(inout Reservoir rDest, inout uint seed, Sample s_new, float w_new)
+void updateReservoir(inout Reservoir rDest, inout uint seed, Sample s_new, float w_new)
 {
     rDest.w = rDest.w + w_new;
     rDest.M = rDest.M + 1;
@@ -27,10 +28,10 @@ void UpdateReservoir(inout Reservoir rDest, inout uint seed, Sample s_new, float
     }
 }
 
-void MergeReservoir(inout Reservoir rDest, inout uint seed, Reservoir rSrc, float p_hat)
+void mergeReservoir(inout Reservoir rDest, inout uint seed, Reservoir rSrc, float p_hat)
 {
     uint M0 = rDest.M;
-    UpdateReservoir(rDest, seed, rSrc.z, p_hat * rSrc.W * rSrc.M);
+    updateReservoir(rDest, seed, rSrc.z, p_hat * rSrc.W * rSrc.M);
     rDest.M = M0 + rSrc.M;
 }
 
