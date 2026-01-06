@@ -27,8 +27,8 @@ layout(binding = 6, set = 0) buffer ReservoirBuffer{
     Reservoir data[];
 }   initialSampleBuffer;
 
-layout(binding = 7, set = 0) uniform image2D depthImage;
-layout(binding = 8, set = 0) uniform image2D normalImage;
+layout(binding = 7, set = 0) uniform image2D curDepthImage;  // 当前帧深度图
+layout(binding = 8, set = 0) uniform image2D curNormalImage; // 当前帧法向量
 
 layout(location = 0) rayPayloadEXT RayPayload hitValue;
 
@@ -160,27 +160,6 @@ void temporalAccumalation(vec3 finalColor)
     }
 }
 
-float calcNDCZ(float rawLinearDepth)
-{
-    const float zNear = cam.zNear;
-    const float zFar  = cam.zFar;
-    
-    float z_view = rawLinearDepth;
-
-    // 边界检查
-    if(z_view >= zFar) return 1.0f; // Far plane (Vulkan depth is 0..1)
-    if(z_view <= zNear) return 0.0f; // Near plane
-
-    // -----------------------------------------------------------
-    // 2. 投影变换 (Projection Transform)
-    // -----------------------------------------------------------
-    // Vulkan 标准 NDC Z 范围是 [0, 1]。
-    // 公式推导自投影矩阵: Z_ndc = P_22 * Z_view + P_23 * W_view (W_view = 1) / -Z_view
-    // 简化公式: Z_ndc = [f / (f - n)] - [ (f * n) / (z * (f - n)) ]
-
-    return (zFar / (zFar - zNear)) - ((zFar * zNear) / ((zFar - zNear) * z_view));
-}
-
 void initialSample(inout uint seed)
 {
     // 1. calc x_v and n_v
@@ -193,10 +172,9 @@ void initialSample(inout uint seed)
     initialSampleBuffer.data[idx].z.baseColor_v = hitValue.baseColor; // for final lighting
     
     float cosTheta =  max(dot(ray.direction, cam.forward.xyz), 0.0f);
-    cosTheta = 1.0f;
-    float zVal = calcNDCZ(hitValue.dis * cosTheta);
-    imageStore(depthImage, ivec2(gl_LaunchIDEXT.xy), vec4(zVal, 0.0f, 0.0f, 0.0f));
-    imageStore(normalImage, ivec2(gl_LaunchIDEXT.xy), vec4(encodeNormal(hitValue.worldNormal), 0.0f));
+    float zVal = calcNDCZ(hitValue.dis * cosTheta, cam.zNear, cam.zFar);
+    imageStore(curDepthImage, ivec2(gl_LaunchIDEXT.xy), vec4(zVal, 0.0f, 0.0f, 0.0f));
+    imageStore(curNormalImage, ivec2(gl_LaunchIDEXT.xy), vec4(encodeNormal(hitValue.worldNormal), 0.0f));
     // debug
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(zVal, zVal, zVal, 1.f));
 

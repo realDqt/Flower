@@ -18,8 +18,8 @@ layout(binding = 2, set = 0) buffer TemporalReservoirBufferOut{
 } temporalReservoirBufferOut;
 
 
-layout(binding = 3, set = 0, r32f) readonly uniform image2D depthImage;
-layout(binding = 4, set = 0, rgba32f) readonly uniform image2D normalImage;
+layout(binding = 3, set = 0, r32f) readonly uniform image2D curDepthImage;
+layout(binding = 4, set = 0, rgba32f) readonly uniform image2D curNormalImage;
 
 layout(binding = 5, set = 0) uniform FrameData{
     mat4 currentInvViewProj;    // 当前帧矩阵信息
@@ -27,10 +27,13 @@ layout(binding = 5, set = 0) uniform FrameData{
     uint frame;
 } frameData;
 
+layout(binding = 6, set = 0, r32f) readonly uniform image2D prevDepthImage;
+layout(binding = 7, set = 0, rgba32f) readonly uniform image2D prevNormalImage;
+
 vec2 getPrevUV(vec2 uv)
 {
     ivec2 sc = ivec2(uv.x * float(WIDTH), uv.y * float(HEIGHT));
-    float ndcZ = imageLoad(depthImage, sc).r;
+    float ndcZ = imageLoad(curDepthImage, sc).r;
     if(ndcZ >= 0.99f) return vec2(-1.0);
     
     vec2 ndcXY = uv * 2.0f - 1.0f;
@@ -53,11 +56,11 @@ bool isValidReprojection(ivec2 prevSC)
     if(prevSC.x < 0 || prevSC.x >= WIDTH || prevSC.y < 0 || prevSC.y >= HEIGHT)
             return false;
     
-    float curDepth = imageLoad(depthImage, ivec2(gl_GlobalInvocationID.xy)).r;
-    vec3 curNormal = decodeNormal(imageLoad(normalImage, ivec2(gl_GlobalInvocationID.xy)).xyz);
+    float curDepth = imageLoad(curDepthImage, ivec2(gl_GlobalInvocationID.xy)).r;
+    vec3 curNormal = decodeNormal(imageLoad(curNormalImage, ivec2(gl_GlobalInvocationID.xy)).xyz);
     
-    float prevDepth = imageLoad(depthImage, prevSC).r;
-    vec3 prevNormal = decodeNormal(imageLoad(normalImage, prevSC).xyz);
+    float prevDepth = imageLoad(prevDepthImage, prevSC).r;
+    vec3 prevNormal = decodeNormal(imageLoad(prevNormalImage, prevSC).xyz);
     
     if(abs(curDepth - prevDepth) > 0.05f)return false;
     if(dot(curNormal, prevNormal) < 0.906307787f)return false;

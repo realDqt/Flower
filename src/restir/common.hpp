@@ -46,4 +46,6 @@ struct SpatialTemporalReuseCompute {
     std::array<VkDescriptorSet, maxConcurrentFrames> descriptorSets{};
 };
 
+constexpr float Z_NEAR = 0.1f;
+constexpr float Z_FAR = 512.0f;
 #endif

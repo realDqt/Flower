@@ -6,8 +6,10 @@ public:
 	AccelerationStructure bottomLevelAS{};
 	AccelerationStructure topLevelAS{};
 
-	StorageImage depthImage;
-	StorageImage normalImage;
+	StorageImage prevDepthImage;
+	StorageImage prevNormalImage;
+	StorageImage curDepthImage;
+	StorageImage curNormalImage;
 
 	vks::Buffer vertexBuffer;
 	vks::Buffer indexBuffer;
@@ -35,8 +37,9 @@ public:
 		glm::mat4 projInverse;
 		glm::vec4 forward;
 		uint32_t frame{ 0 };
-		float zNear = 0.1f;
-		float zFar = 512.0f;
+		float zNear = Z_NEAR;
+		float zFar = Z_FAR;
+		float padding;
 	} cameraProperties;
 	std::array<vks::Buffer, maxConcurrentFrames> cameraPropertiesUniformBuffers;
 
@@ -74,7 +77,7 @@ public:
 		camera.rotationSpeed = 0.25f;
 		//camera.movementSpeed = 0.25f;
 
-		camera.setPerspective(60.0f, (float)width / (float)height, 0.1f, 512.0f);
+		camera.setPerspective(60.0f, (float)width / (float)height, Z_NEAR, Z_FAR);
 		camera.setRotation(glm::vec3(0.0f, 90.0f, 0.0f));
 		camera.setTranslation(glm::vec3(0.0f, 3.0f, -1.0f));
 
@@ -97,8 +100,10 @@ public:
 			vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 			vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 			deleteStorageImage();
-			deleteRestirStorageImage(depthImage);
-			deleteRestirStorageImage(normalImage);
+			deleteRestirStorageImage(prevDepthImage);
+			deleteRestirStorageImage(prevNormalImage);
+			deleteRestirStorageImage(curDepthImage);
+			deleteRestirStorageImage(curNormalImage);
 			deleteAccelerationStructure(bottomLevelAS);
 			deleteAccelerationStructure(topLevelAS);
 			vertexBuffer.destroy();
@@ -524,7 +529,7 @@ public:
 	/*
 		Create our ray tracing pipeline
 	*/
-	void createRayTracingPipeline()
+	void createInitialSampleRayTracingPipeline()
 	{
 		const uint32_t imageCount = static_cast<uint32_t>(scene.textures.size());
 
@@ -646,7 +651,7 @@ public:
 				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
 			// --------------------------temporal reuse--------------------------------
 			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames * 3 },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames * 2},
+			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames * 4},
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
 		};
 		//std::cout << "total texture = " << scene.textures.size() << std::endl; // 49
@@ -659,7 +664,7 @@ public:
 	/*
 		Create the descriptor sets used for the ray tracing dispatch
 	*/
-	void createRayTracingDescriptorSets()
+	void createInitialSampleRayTracingDescriptorSets()
 	{
 		uint32_t imageCount = static_cast<uint32_t>(scene.textures.size());
 
@@ -691,8 +696,8 @@ public:
 			accelerationStructureWrite.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 
 			VkDescriptorImageInfo storageImageDescriptor{ VK_NULL_HANDLE, storageImage.view, VK_IMAGE_LAYOUT_GENERAL };
-			VkDescriptorImageInfo depthImageDescriptor{ VK_NULL_HANDLE, depthImage.view, VK_IMAGE_LAYOUT_GENERAL };
-			VkDescriptorImageInfo normalImageDescriptor{ VK_NULL_HANDLE, normalImage.view, VK_IMAGE_LAYOUT_GENERAL };
+			VkDescriptorImageInfo curDepthImageDescriptor{ VK_NULL_HANDLE, curDepthImage.view, VK_IMAGE_LAYOUT_GENERAL };
+			VkDescriptorImageInfo curNormalImageDescriptor{ VK_NULL_HANDLE, curNormalImage.view, VK_IMAGE_LAYOUT_GENERAL };
 
 			std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
 				// Binding 0: Top level acceleration structure
@@ -707,10 +712,10 @@ public:
 				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &geometryNodesBuffer.descriptor),
 				// Binding 6: Initial Sample Buffer
 				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6, &initialSampleBuffer.descriptor),
-				// Binding 7: Depth Image
-				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7, &depthImageDescriptor),
-				// Binding 8: Normal Image
-				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8, &normalImageDescriptor)
+				// Binding 7: Cur Depth Image
+				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7, &curDepthImageDescriptor),
+				// Binding 8: Cur Normal Image
+				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8, &curNormalImageDescriptor)
 			};
 
 			// Image descriptors for the variable no. of images of the glTF model
@@ -838,22 +843,28 @@ public:
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 3),
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 4),
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 5),
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 6),
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 7),
 		};
 		VkDescriptorSetLayoutCreateInfo descriptorLayout = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
 		VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorLayout, nullptr,	&temporalReuseCompute.descriptorSetLayout));
 
 		// Sets per frame in flight as the uniform buffer is written by the CPU and read by the GPU
 		// Images and static SSBO with scene data do not need to be duplicated per frame, we reuse the same one for each frame
-		VkDescriptorImageInfo depthImageDescriptor{ VK_NULL_HANDLE, depthImage.view, VK_IMAGE_LAYOUT_GENERAL };
-		VkDescriptorImageInfo normalImageDescriptor{ VK_NULL_HANDLE, normalImage.view, VK_IMAGE_LAYOUT_GENERAL };
+		VkDescriptorImageInfo prevDepthImageDescriptor{ VK_NULL_HANDLE, prevDepthImage.view, VK_IMAGE_LAYOUT_GENERAL };
+		VkDescriptorImageInfo prevNormalImageDescriptor{ VK_NULL_HANDLE, prevNormalImage.view, VK_IMAGE_LAYOUT_GENERAL };
+		VkDescriptorImageInfo curDepthImageDescriptor{ VK_NULL_HANDLE, curDepthImage.view, VK_IMAGE_LAYOUT_GENERAL };
+		VkDescriptorImageInfo curNormalImageDescriptor{ VK_NULL_HANDLE, curNormalImage.view, VK_IMAGE_LAYOUT_GENERAL };
 		for (auto i = 0; i < maxConcurrentFrames; i++) {
 			VkDescriptorSetAllocateInfo allocInfo = vks::initializers::descriptorSetAllocateInfo(descriptorPool, &temporalReuseCompute.descriptorSetLayout, 1);
 			VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &allocInfo, &temporalReuseCompute.descriptorSets[i]));
 			std::vector<VkWriteDescriptorSet> computeWriteDescriptorSets = {
 				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 0, &initialSampleBuffer.descriptor),
-				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3, &depthImageDescriptor),
-				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4, &normalImageDescriptor),
+				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3, &prevDepthImageDescriptor),
+				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4, &prevNormalImageDescriptor),
 				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 5, &frameDataUniformBuffers[i].descriptor),
+				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 6, &prevDepthImageDescriptor),
+				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7, &prevNormalImageDescriptor),
 			};
 			// TODO: ping pong update temporal buffer
 			vkUpdateDescriptorSets(device, static_cast<uint32_t>(computeWriteDescriptorSets.size()), computeWriteDescriptorSets.data(), 0, nullptr);
@@ -902,6 +913,7 @@ public:
 		cameraProperties.projInverse = glm::inverse(camera.matrices.perspective);
 		cameraProperties.viewInverse = glm::inverse(camera.matrices.view);
 		cameraProperties.forward = glm::vec4(camera.getForward(), 0.0f);
+		//std::cout << cameraProperties.forward.x << " " << cameraProperties.forward.y << " " << cameraProperties.forward.z << std::endl;
 		// This value is used to accumulate multiple frames into the finale picture
 		// It's required as ray tracing needs to do multiple passes for transparency
 		// In this sample we use noise offset by this frame index to shoot rays for transparency into different directions
@@ -953,17 +965,20 @@ public:
 		createTopLevelAccelerationStructure();
 
 		createStorageImage(swapChain.colorFormat, { width, height, 1 });
-		createRestirStorageImage(depthImage, VK_FORMAT_R32_SFLOAT, { width, height, 1 });
-		createRestirStorageImage(normalImage, VK_FORMAT_R32G32B32A32_SFLOAT, { width, height, 1 });
+		createRestirStorageImage(prevDepthImage, VK_FORMAT_R32_SFLOAT, { width, height, 1 });
+		createRestirStorageImage(prevNormalImage, VK_FORMAT_R32G32B32A32_SFLOAT, { width, height, 1 });
+		createRestirStorageImage(curDepthImage, VK_FORMAT_R32_SFLOAT, { width, height, 1 });
+		createRestirStorageImage(curNormalImage, VK_FORMAT_R32G32B32A32_SFLOAT, { width, height, 1 });
+		
 		createUniformBuffer();
 		createLightBuffer();
 		createReservoirBuffer();
 		
-		createRayTracingPipeline();
+		createInitialSampleRayTracingPipeline();
 		createShaderBindingTables();
 		
 		createDescriptorPool();
-		createRayTracingDescriptorSets();
+		createInitialSampleRayTracingDescriptorSets();
 
 		prepareTemporalReuseCompute();
 		prepared = true;
@@ -1011,13 +1026,13 @@ public:
 		depthBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 		depthBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
 		depthBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-		depthBarrier.image = depthImage.image;
+		depthBarrier.image = prevDepthImage.image;
 		depthBarrier.subresourceRange = subresourceRange;
 		depthBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		depthBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 
 		VkImageMemoryBarrier normalBarrier = depthBarrier;
-		normalBarrier.image = normalImage.image;
+		normalBarrier.image = prevNormalImage.image;
 
 		VkImageMemoryBarrier imageBarriers[] = { depthBarrier, normalBarrier };
 
@@ -1038,11 +1053,8 @@ public:
 		uint32_t groupX = (width + 15) / 16;
 		uint32_t groupY = (height + 15) / 16;
 		vkCmdDispatch(cmdBuffer, groupX, groupY, 1);
-
-
-		// ========================================================================
+		
 		// Synchronization: Barrier (Compute Write -> Transfer/Graphics Read)
-		// ========================================================================
 		VkMemoryBarrier computeFinishBarrier = {};
 		computeFinishBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
 		computeFinishBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -1057,10 +1069,10 @@ public:
 			0, nullptr,
 			0, nullptr
 		);
+		
 		/*
 			Copy ray tracing output to swap chain image
 		*/
-
 		// Prepare current swap chain image as transfer destination
 		vks::tools::setImageLayout(
 			cmdBuffer,
@@ -1100,8 +1112,25 @@ public:
 			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 			VK_IMAGE_LAYOUT_GENERAL,
 			subresourceRange);
-
+		
 		drawUI(cmdBuffer, frameBuffers[currentImageIndex]);
+
+
+		// copy: cur -> prev
+		vks::tools::setImageLayout(cmdBuffer, curDepthImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, subresourceRange);
+		vks::tools::setImageLayout(cmdBuffer, curNormalImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, subresourceRange);
+
+		vks::tools::setImageLayout(cmdBuffer, prevDepthImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, subresourceRange);
+		vks::tools::setImageLayout(cmdBuffer, prevNormalImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, subresourceRange);
+
+		vkCmdCopyImage(cmdBuffer, curDepthImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, prevDepthImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+		vkCmdCopyImage(cmdBuffer, curNormalImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, prevNormalImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+		
+		vks::tools::setImageLayout(cmdBuffer, curDepthImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, subresourceRange);
+		vks::tools::setImageLayout(cmdBuffer, curNormalImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, subresourceRange);
+			
+		vks::tools::setImageLayout(cmdBuffer, prevDepthImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, subresourceRange);
+		vks::tools::setImageLayout(cmdBuffer, prevNormalImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, subresourceRange);
 
 		VK_CHECK_RESULT(vkEndCommandBuffer(cmdBuffer));
 	}

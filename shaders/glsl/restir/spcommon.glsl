@@ -134,3 +134,21 @@ uint getCoord1D(uvec2 coords2D)
 {
     return coords2D.y * WIDTH + coords2D.x;
 }
+
+float calcNDCZ(float rawLinearDepth, float zNear, float zFar)
+{
+    float z_view = rawLinearDepth;
+
+    // 边界检查
+    if(z_view >= zFar) return 1.0f; // Far plane (Vulkan depth is 0..1)
+    if(z_view <= zNear) return 0.0f; // Near plane
+
+    // -----------------------------------------------------------
+    // 2. 投影变换 (Projection Transform)
+    // -----------------------------------------------------------
+    // Vulkan 标准 NDC Z 范围是 [0, 1]。
+    // 公式推导自投影矩阵: Z_ndc = P_22 * Z_view + P_23 * W_view (W_view = 1) / -Z_view
+    // 简化公式: Z_ndc = [f / (f - n)] - [ (f * n) / (z * (f - n)) ]
+
+    return (zFar / (zFar - zNear)) - ((zFar * zNear) / ((zFar - zNear) * z_view));
+}

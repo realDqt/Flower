@@ -160,12 +160,7 @@ public:
 
 	glm::vec3 getForward()const
 	{
-		glm::vec3 camFront;
-		camFront.x = -cos(glm::radians(rotation.x)) * sin(glm::radians(rotation.y));
-		camFront.y = sin(glm::radians(rotation.x));
-		camFront.z = -cos(glm::radians(rotation.x)) * cos(glm::radians(rotation.y));
-		camFront = glm::normalize(camFront);
-		return camFront;
+		return -normalize(glm::vec3(glm::inverse(matrices.view)[2]));
 	}
 
 	void update(float deltaTime)
