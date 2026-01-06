@@ -1,5 +1,6 @@
 // 先include "spcommon.glsl"
 #define MAX_HISTORY 20
+#define MAX_ITERATIONS 10
 struct Sample {
     vec4 x_v;
     vec4 n_v;
@@ -19,7 +20,7 @@ struct Reservoir {
     uint _pad;
 };
 
-void updateReservoir(inout Reservoir rDest, inout uint seed, Sample s_new, float w_new)
+void updateReservoir(inout Reservoir rDest, Sample s_new, float w_new, inout uint seed)
 {
     rDest.w = rDest.w + w_new;
     rDest.M = rDest.M + 1;
@@ -28,10 +29,10 @@ void updateReservoir(inout Reservoir rDest, inout uint seed, Sample s_new, float
     }
 }
 
-void mergeReservoir(inout Reservoir rDest, inout uint seed, Reservoir rSrc, float p_hat)
+void mergeReservoir(inout Reservoir rDest, Reservoir rSrc, float p_hat, inout uint seed)
 {
     uint M0 = rDest.M;
-    updateReservoir(rDest, seed, rSrc.z, p_hat * rSrc.W * rSrc.M);
+    updateReservoir(rDest, rSrc.z, p_hat * rSrc.W * rSrc.M, seed);
     rDest.M = M0 + rSrc.M;
 }
 
@@ -47,7 +48,7 @@ float luminance(vec3 color)
     return dot(color, vec3(0.2126, 0.7152, 0.0722));
 }
 
-float pqHat(Reservoir r)
+float pq_hat(Reservoir r)
 {
     return luminance(r.z.Lo.rgb);
 }

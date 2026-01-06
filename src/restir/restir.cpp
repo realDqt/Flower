@@ -51,7 +51,7 @@ public:
 	} frameData;
 	std::array<vks::Buffer, maxConcurrentFrames> frameDataUniformBuffers;
 
-	SpatialTemporalReuseCompute temporalReuseCompute;
+	TemporalReuseCompute temporalReuseCompute;
 	uint32_t pingPongIdx = 0;
 
 	VkPipeline pipeline{ VK_NULL_HANDLE };
@@ -123,10 +123,6 @@ public:
 			vkDestroyPipeline(device, temporalReuseCompute.pipeline, nullptr);
 			vkDestroyPipelineLayout(device, temporalReuseCompute.pipelineLayout, nullptr);
 			vkDestroyDescriptorSetLayout(device, temporalReuseCompute.descriptorSetLayout, nullptr);
-			vkDestroyCommandPool(device, temporalReuseCompute.commandPool, nullptr);
-			for (auto& fence : temporalReuseCompute.fences) {
-				vkDestroyFence(device, fence, nullptr);
-			}
 			
 			for (auto& buffer : cameraPropertiesUniformBuffers) {
 				buffer.destroy();
@@ -803,38 +799,10 @@ public:
 
 	void prepareTemporalReuseCompute()
 	{
-		// Create a compute capable device queue
-		// The VulkanDevice::createLogicalDevice functions finds a compute capable queue and prefers queue families that only support compute
-		// Depending on the implementation this may result in different queue family indices for graphics and computes,
-		// requiring proper synchronization (see the memory barriers in buildComputeCommandBuffer)
-		VkDeviceQueueCreateInfo queueCreateInfo = {};
-		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		queueCreateInfo.pNext = NULL;
-		queueCreateInfo.queueFamilyIndex = vulkanDevice->queueFamilyIndices.compute;
-		queueCreateInfo.queueCount = 1;
-		vkGetDeviceQueue(device, vulkanDevice->queueFamilyIndices.compute, 0, &temporalReuseCompute.queue);
 
-		// Separate command pool as queue family for compute may be different from the graphics one
-		VkCommandPoolCreateInfo cmdPoolInfo = {};
-		cmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-		cmdPoolInfo.queueFamilyIndex = vulkanDevice->queueFamilyIndices.compute;
-		cmdPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-		VK_CHECK_RESULT(vkCreateCommandPool(device, &cmdPoolInfo, nullptr, &temporalReuseCompute.commandPool));
 
 		// Some objects need to be duplicated per frames in flight
-
-		// Create command buffers for compute operations
-		VkCommandBufferAllocateInfo cmdBufAllocateInfo = vks::initializers::commandBufferAllocateInfo(temporalReuseCompute.commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
-		for (auto& commandBuffer : temporalReuseCompute.commandBuffers) {
-			VK_CHECK_RESULT(vkAllocateCommandBuffers(device, &cmdBufAllocateInfo, &commandBuffer));
-		}
-
-		// Fences for compute CB sync
-		for (auto& fence : temporalReuseCompute.fences) {
-			VkFenceCreateInfo fenceCreateInfo = vks::initializers::fenceCreateInfo(VK_FENCE_CREATE_SIGNALED_BIT);
-			VK_CHECK_RESULT(vkCreateFence(device, &fenceCreateInfo, nullptr, &fence));
-		}
-
+		
 		// Setup descriptors
 		std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 0),

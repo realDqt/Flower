@@ -115,7 +115,7 @@ void main() {
             uint prevIdx = getCoord1D(uvec2(prevSC));
             Reservoir R = temporalReservoirBufferIn.data[prevIdx];
             R.M = min(R.M, MAX_HISTORY);
-            mergeReservoir(S, seed, R, pqHat(R));
+            mergeReservoir(S, R, pq_hat(R), seed);
         }
     }
 
@@ -123,7 +123,7 @@ void main() {
         S.w *= float(MAX_HISTORY) / float(S.M); // 必须等比缩放总权重
         S.M = MAX_HISTORY;
     }
-    float p_hat = pqHat(S);
+    float p_hat = pq_hat(S);
     if (p_hat <= 0.0 || S.M == 0) {
         S.W = 0.0;
         S.w = 0.0;

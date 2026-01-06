@@ -53,7 +53,7 @@ uint getSeed()
 
 bool isValidReprojection(ivec2 prevSC)
 {
-    if(prevSC.x < 0 || prevSC.x >= WIDTH || prevSC.y < 0 || prevSC.y >= HEIGHT)
+    if(frameData.frame == 0 || prevSC.x < 0 || prevSC.x >= WIDTH || prevSC.y < 0 || prevSC.y >= HEIGHT)
             return false;
     
     float curDepth = imageLoad(curDepthImage, ivec2(gl_GlobalInvocationID.xy)).r;
@@ -67,25 +67,30 @@ bool isValidReprojection(ivec2 prevSC)
     return true;
 }
 
+ivec2 getPrevSC(uvec2 sc)
+{
+    vec2 uv = (vec2(sc) + 0.5f) / vec2(WIDTH, HEIGHT);
+    vec2 prevUV = getPrevUV(uv);
+    ivec2 prevSC = ivec2(prevUV * vec2(WIDTH, HEIGHT));
+    return prevSC;
+}
+
 void main() {
     uvec2 pixel = gl_GlobalInvocationID.xy;
     if (pixel.x >= WIDTH || pixel.y >= HEIGHT) return;
     uint idx = getCoord1D(pixel);
     uint seed = getSeed();
 
-    vec2 uv = (vec2(pixel) + 0.5f) / vec2(WIDTH, HEIGHT);
-    vec2 prevUV = getPrevUV(uv);
+    ivec2 prevSC = getPrevSC(pixel);
     
     Reservoir S = initialSampleBuffer.data[idx];
 
-    if(prevUV.x >= 0.0) {
-        ivec2 prevSC = ivec2(prevUV * vec2(WIDTH, HEIGHT));
-
+    if(prevSC.x >= 0) {
         if(isValidReprojection(prevSC)) {
             uint prevIdx = getCoord1D(uvec2(prevSC));
             Reservoir R = temporalReservoirBufferIn.data[prevIdx];
             R.M = min(R.M, MAX_HISTORY);
-            mergeReservoir(S, seed, R, pqHat(R));
+            mergeReservoir(S, R, pq_hat(R), seed);
         }
     }
     
@@ -93,7 +98,7 @@ void main() {
         S.w *= float(MAX_HISTORY) / float(S.M); // 必须等比缩放总权重
         S.M = MAX_HISTORY;
     }
-    float p_hat = pqHat(S);
+    float p_hat = pq_hat(S);
     if (p_hat <= 0.0 || S.M == 0) {
         S.W = 0.0;
         S.w = 0.0;
