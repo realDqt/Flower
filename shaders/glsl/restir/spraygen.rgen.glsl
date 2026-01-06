@@ -23,8 +23,8 @@ layout(binding = 3, set = 0) buffer DirectionalLight{
     vec3 emission;  // 强度/颜色
 } directionalLight;
 
-layout(binding = 6, set = 0) buffer ReservoirBuffer{
-    Reservoir data[];
+layout(binding = 6, set = 0) buffer InitialSampleBuffer{
+    Sample data[];
 }   initialSampleBuffer;
 
 layout(binding = 7, set = 0) uniform image2D curDepthImage;  // 当前帧深度图
@@ -167,9 +167,9 @@ void initialSample(inout uint seed)
     traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
     if(hitValue.dis < 0.0f) return; // 未命中则提前返回
     uint idx = getCoord1D(uvec2(gl_LaunchIDEXT.xy));
-    initialSampleBuffer.data[idx].z.x_v.xyz = hitValue.worldPos;
-    initialSampleBuffer.data[idx].z.n_v.xyz = hitValue.worldNormal;
-    initialSampleBuffer.data[idx].z.baseColor_v = hitValue.baseColor; // for final lighting
+    initialSampleBuffer.data[idx].x_v.xyz = hitValue.worldPos;
+    initialSampleBuffer.data[idx].n_v.xyz = hitValue.worldNormal;
+    initialSampleBuffer.data[idx].baseColor_v = hitValue.baseColor; // for final lighting
     
     float cosTheta =  max(dot(ray.direction, cam.forward.xyz), 0.0f);
     float zVal = calcNDCZ(hitValue.dis * cosTheta, cam.zNear, cam.zFar);
@@ -186,14 +186,14 @@ void initialSample(inout uint seed)
     ray.direction = sampleDir;
     traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
     if(hitValue.dis < 0.0f) return; // 未命中则提前返回
-    initialSampleBuffer.data[idx].z.x_s.xyz = hitValue.worldPos;
-    initialSampleBuffer.data[idx].z.n_s.xyz = hitValue.worldNormal;
+    initialSampleBuffer.data[idx].x_s.xyz = hitValue.worldPos;
+    initialSampleBuffer.data[idx].n_s.xyz = hitValue.worldNormal;
 
     // 3. calc Lo
-    initialSampleBuffer.data[idx].z.Lo.xyz = calcNBounceLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.baseColor, -ray.direction, 0, seed);
+    initialSampleBuffer.data[idx].Lo.xyz = calcNBounceLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.baseColor, -ray.direction, 0, seed);
 
     // 4. store seed
-    initialSampleBuffer.data[idx].z.Random = seed;
+    initialSampleBuffer.data[idx].Random = seed;
 }
 
 void main()

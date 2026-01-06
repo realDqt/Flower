@@ -196,21 +196,12 @@ public:
 	{
 		std::vector<Reservoir> reservoirBufferData(width * height);
 		vks::Buffer stagingBuffer;
-
 		VK_CHECK_RESULT(vulkanDevice->createBuffer(
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			&stagingBuffer,
 			static_cast<uint32_t>(reservoirBufferData.size()) * sizeof(Reservoir),
 			reservoirBufferData.data()));
-
-		VK_CHECK_RESULT(vulkanDevice->createBuffer(
-			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			&initialSampleBuffer,
-			static_cast<uint32_t>(reservoirBufferData.size()) * sizeof(Reservoir)));
-		vulkanDevice->copyBuffer(&stagingBuffer, &initialSampleBuffer, queue);
-		
 		for (int i = 0; i < 2; ++i)
 		{
 			VK_CHECK_RESULT(vulkanDevice->createBuffer(
@@ -230,6 +221,28 @@ public:
 		}
 		stagingBuffer.destroy();
 	}
+
+	void createSampleBuffer()
+	{
+		std::vector<Sample> sampleBufferData(width * height);
+		vks::Buffer stagingBuffer;
+
+		VK_CHECK_RESULT(vulkanDevice->createBuffer(
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			&stagingBuffer,
+			static_cast<uint32_t>(sampleBufferData.size()) * sizeof(Sample),
+			sampleBufferData.data()));
+
+		VK_CHECK_RESULT(vulkanDevice->createBuffer(
+			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			&initialSampleBuffer,
+			static_cast<uint32_t>(sampleBufferData.size()) * sizeof(Sample)));
+		vulkanDevice->copyBuffer(&stagingBuffer, &initialSampleBuffer, queue);
+		stagingBuffer.destroy();
+	}
+
 
 	void createAccelerationStructureBuffer(AccelerationStructure& accelerationStructure, VkAccelerationStructureBuildSizesInfoKHR buildSizeInfo)
 	{
@@ -940,6 +953,7 @@ public:
 		
 		createUniformBuffer();
 		createLightBuffer();
+		createSampleBuffer();
 		createReservoirBuffer();
 		
 		createInitialSampleRayTracingPipeline();

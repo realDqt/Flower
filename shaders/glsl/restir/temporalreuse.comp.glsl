@@ -6,7 +6,7 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(binding = 0, set = 0) buffer InitialSampleBufferBuffer{
-    Reservoir data[];
+    Sample data[];
 } initialSampleBuffer;
 
 layout(binding = 1, set = 0) buffer TemporalReservoirBufferIn{
@@ -83,27 +83,19 @@ void main() {
 
     ivec2 prevSC = getPrevSC(pixel);
     
-    Reservoir S = initialSampleBuffer.data[idx];
-
-    if(prevSC.x >= 0) {
-        if(isValidReprojection(prevSC)) {
-            uint prevIdx = getCoord1D(uvec2(prevSC));
-            Reservoir R = temporalReservoirBufferIn.data[prevIdx];
-            R.M = min(R.M, MAX_HISTORY);
-            mergeReservoir(S, R, pq_hat(R), seed);
-        }
+    Sample S = initialSampleBuffer.data[idx];
+    float w = pq_hat(S) / pq(S);
+    if(isValidReprojection(prevSC)){
+        uint prevIdx = getCoord1D(uvec2(prevSC));
+        Reservoir R = temporalReservoirBufferIn.data[prevIdx];
+        updateReservoir(R, S, w, seed);
+        R.W = R.w / (R.M * pq_hat(R.z));
+        temporalReservoirBufferOut.data[idx] = R;
+    }else if(frameData.frame == 0){
+        // initial
+        temporalReservoirBufferOut.data[idx].z = S;
+        temporalReservoirBufferOut.data[idx].w = w;
+        temporalReservoirBufferOut.data[idx].M = 1;
+        temporalReservoirBufferOut.data[idx].W = w / (1 * pq_hat(S));
     }
-    
-    if (S.M > MAX_HISTORY) {
-        S.w *= float(MAX_HISTORY) / float(S.M); // 必须等比缩放总权重
-        S.M = MAX_HISTORY;
-    }
-    float p_hat = pq_hat(S);
-    if (p_hat <= 0.0 || S.M == 0) {
-        S.W = 0.0;
-        S.w = 0.0;
-    } else {
-        S.W = S.w / (float(S.M) * p_hat);
-    }
-    temporalReservoirBufferOut.data[idx] = S;
 }

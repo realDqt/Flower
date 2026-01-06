@@ -158,7 +158,7 @@ void main() {
         uint prevIdx_qn = getCoord1D(uvec2(prevPixel_qn));
         Reservoir R_n = temporalReservoirBufferIn.data[prevIdx_qn];
         float jacobian = calcJacobian(R_s, R_n);
-        float pq_hat_prime = pq_hat(R_n) / jacobian;
+        float pq_hat_prime = pq_hat(R_n.z) / jacobian;
         if(!isVisibleAB(R_s.z.x_v.xyz, R_n.z.x_s.xyz))
                 pq_hat_prime = 0.0f;
         mergeReservoir(R_s, R_n, pq_hat_prime, seed);
@@ -171,6 +171,6 @@ void main() {
         if(p_qn_hat[i] > 0) 
                 Z = Z + Q[i].M;
     }
-    R_s.W = R_s.W / (Z * pq_hat(R_s));
+    R_s.W = R_s.W / (Z * pq_hat(R_s.z));
     spatialReservoirBufferOut.data[idx_q] = R_s;
 }

@@ -36,10 +36,10 @@ void mergeReservoir(inout Reservoir rDest, Reservoir rSrc, float p_hat, inout ui
     rDest.M = M0 + rSrc.M;
 }
 
-float pq(Reservoir r)
+float pq(Sample z)
 {
-    vec3 sampleDir = normalize(r.z.x_s.xyz - r.z.x_v.xyz);
-    return max(dot(r.z.n_v.xyz, sampleDir), 0.0f) / M_PI;
+    vec3 sampleDir = normalize(z.x_s.xyz - z.x_v.xyz);
+    return max(dot(z.n_v.xyz, sampleDir), 0.0f) / M_PI;
 }
 
 float luminance(vec3 color)
@@ -48,7 +48,7 @@ float luminance(vec3 color)
     return dot(color, vec3(0.2126, 0.7152, 0.0722));
 }
 
-float pq_hat(Reservoir r)
+float pq_hat(Sample z)
 {
-    return luminance(r.z.Lo.rgb);
+    return luminance(z.Lo.rgb);
 }
