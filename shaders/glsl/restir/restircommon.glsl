@@ -1,6 +1,8 @@
 // 先include "spcommon.glsl"
 #define MAX_HISTORY 20
 #define MAX_ITERATIONS 10
+#define SPATIAL_RADIUS 30.0
+
 struct Sample {
     vec4 x_v;
     vec4 n_v;
@@ -51,4 +53,11 @@ float luminance(vec3 color)
 float pq_hat(Sample z)
 {
     return luminance(z.Lo.rgb);
+}
+
+float pq_hat(vec3 pos_q, vec3 norm_q, Sample s) {
+    vec3 L = normalize(s.x_s.xyz - pos_q);
+    if(dot(-L, s.n_s.xyz) < 0.0f) return 0.0f;
+    float cosTheta = max(dot(norm_q, L), 0.0);
+    return pq_hat(s) * cosTheta;
 }

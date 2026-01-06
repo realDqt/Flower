@@ -5,7 +5,7 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-layout(binding = 0, set = 0) buffer InitialSampleBufferBuffer{
+layout(binding = 0, set = 0) buffer InitialSampleBuffer{
     Sample data[];
 } initialSampleBuffer;
 
@@ -80,22 +80,34 @@ void main() {
     if (pixel.x >= WIDTH || pixel.y >= HEIGHT) return;
     uint idx = getCoord1D(pixel);
     uint seed = getSeed();
-
-    ivec2 prevSC = getPrevSC(pixel);
     
     Sample S = initialSampleBuffer.data[idx];
-    float w = pq_hat(S) / pq(S);
-    if(isValidReprojection(prevSC)){
+    float w = pq_hat(S) / max(pq(S), 0.0001f);
+    ivec2 prevSC = getPrevSC(pixel);
+    bool validHistory = isValidReprojection(prevSC);
+
+    Reservoir R;
+
+    if(validHistory && frameData.frame > 0) {
         uint prevIdx = getCoord1D(uvec2(prevSC));
-        Reservoir R = temporalReservoirBufferIn.data[prevIdx];
+        R = temporalReservoirBufferIn.data[prevIdx];
+        if(R.M > MAX_HISTORY) {
+            R.w *= float(MAX_HISTORY) / float(R.M); 
+            R.M = MAX_HISTORY;
+        }
         updateReservoir(R, S, w, seed);
-        R.W = R.w / (R.M * pq_hat(R.z));
-        temporalReservoirBufferOut.data[idx] = R;
-    }else if(frameData.frame == 0){
-        // initial
-        temporalReservoirBufferOut.data[idx].z = S;
-        temporalReservoirBufferOut.data[idx].w = w;
-        temporalReservoirBufferOut.data[idx].M = 1;
-        temporalReservoirBufferOut.data[idx].W = w / (1 * pq_hat(S));
+    }else {
+        R.z = S;
+        R.w = w;
+        R.M = 1;
+        R.W = 0.0f; 
     }
+    
+    float pHat = pq_hat(R.z);
+    if(pHat <= 0.0f || R.M == 0) {
+        R.W = 0.0f;
+    } else {
+        R.W = R.w / (float(R.M) * pHat);
+    }
+    temporalReservoirBufferOut.data[idx] = R;
 }
