@@ -1249,27 +1249,11 @@ public:
 	      &spatialReuseRayTracing.shaderBindingTables.raygen.stridedDeviceAddressRegion,
 	      &spatialReuseRayTracing.shaderBindingTables.miss.stridedDeviceAddressRegion,
 	      &spatialReuseRayTracing.shaderBindingTables.hit.stridedDeviceAddressRegion,
-	      &emptySbtEntry, // Spatial Reuse 通常不需要 Miss/Hit shader，如果在 RayGen 里做完了一切
+	      &emptySbtEntry, 
 	      width,
 	      height,
 	      1);
 		
-	   // Barrier 3: Spatial Reuse (RT) -> Transfer (Copy to Swapchain)
-	   VkMemoryBarrier spatialFinishBarrier = {};
-	   spatialFinishBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-	   spatialFinishBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-	   spatialFinishBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-
-	   // Image Barrier
-	   vkCmdPipelineBarrier(
-	      cmdBuffer,
-	      VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, 
-	      VK_PIPELINE_STAGE_TRANSFER_BIT,
-	      0,
-	      1, &spatialFinishBarrier,
-	      0, nullptr,
-	      0, nullptr
-	   );
 		
 		
 		/*
