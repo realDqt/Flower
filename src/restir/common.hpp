@@ -33,6 +33,24 @@ struct Reservoir
     uint32_t _pad;       // Offset 124-128 (手动填充，凑整结构体)
 };
 
+struct ShaderBindingTables {
+    ShaderBindingTable raygen;
+    ShaderBindingTable miss;
+    ShaderBindingTable hit;
+};
+
+// Resources for the initial sample
+struct InitialSampleRayTracing
+{
+    std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups{};
+    ShaderBindingTables shaderBindingTables;
+    VkPipeline pipeline{ VK_NULL_HANDLE };
+    VkPipelineLayout pipelineLayout{ VK_NULL_HANDLE };
+    VkDescriptorSetLayout descriptorSetLayout{ VK_NULL_HANDLE };
+    std::array<VkDescriptorSet, maxConcurrentFrames> descriptorSets{};
+};
+
+
 
 // Resources for the compute part of the example
 struct TemporalReuseCompute {

@@ -13,6 +13,12 @@
 #include "VulkanTools.h"
 #include "VulkanDevice.h"
 
+// Extends the buffer class and holds information for a shader binding table
+class ShaderBindingTable : public vks::Buffer {
+public:
+	VkStridedDeviceAddressRegionKHR stridedDeviceAddressRegion{};
+};
+
 // Base sample class with added features specific to hardware ray traced samples
 class VulkanRaytracingSample : public VulkanExampleBase
 {
@@ -65,12 +71,7 @@ public:
 		VkImageView view{ VK_NULL_HANDLE };
 		VkFormat format;
 	} storageImage;
-
-	// Extends the buffer class and holds information for a shader binding table
-	class ShaderBindingTable : public vks::Buffer {
-	public:
-		VkStridedDeviceAddressRegionKHR stridedDeviceAddressRegion{};
-	};
+	
 
 	// Set to true, to denote that the sample only uses ray queries (changes extension and render pass handling)
 	bool rayQueryOnly = false;

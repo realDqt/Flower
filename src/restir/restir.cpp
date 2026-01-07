@@ -23,13 +23,6 @@ public:
 	};
 	vks::Buffer geometryNodesBuffer;
 
-	std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups{};
-	struct ShaderBindingTables {
-		ShaderBindingTable raygen;
-		ShaderBindingTable miss;
-		ShaderBindingTable hit;
-	} shaderBindingTables;
-
 	vks::Texture2D texture;
 
 	struct CameraProperties {
@@ -51,13 +44,10 @@ public:
 	} frameData;
 	std::array<vks::Buffer, maxConcurrentFrames> frameDataUniformBuffers;
 
+	InitialSampleRayTracing initialSampleRayTracing;
 	TemporalReuseCompute temporalReuseCompute;
+	
 	uint32_t pingPongIdx = 0;
-
-	VkPipeline pipeline{ VK_NULL_HANDLE };
-	VkPipelineLayout pipelineLayout{ VK_NULL_HANDLE };
-	VkDescriptorSetLayout descriptorSetLayout{ VK_NULL_HANDLE };
-	std::array<VkDescriptorSet, maxConcurrentFrames> descriptorSets{};
 
 	vkglTF::Model scene;
 
@@ -96,9 +86,9 @@ public:
 	~Sponza()
 	{
 		if (device) {
-			vkDestroyPipeline(device, pipeline, nullptr);
-			vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-			vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+			vkDestroyPipeline(device, initialSampleRayTracing.pipeline, nullptr);
+			vkDestroyPipelineLayout(device, initialSampleRayTracing.pipelineLayout, nullptr);
+			vkDestroyDescriptorSetLayout(device, initialSampleRayTracing.descriptorSetLayout, nullptr);
 			deleteStorageImage();
 			deleteRestirStorageImage(prevDepthImage);
 			deleteRestirStorageImage(prevNormalImage);
@@ -108,9 +98,9 @@ public:
 			deleteAccelerationStructure(topLevelAS);
 			vertexBuffer.destroy();
 			indexBuffer.destroy();
-			shaderBindingTables.raygen.destroy();
-			shaderBindingTables.miss.destroy();
-			shaderBindingTables.hit.destroy();
+			initialSampleRayTracing.shaderBindingTables.raygen.destroy();
+			initialSampleRayTracing.shaderBindingTables.miss.destroy();
+			initialSampleRayTracing.shaderBindingTables.hit.destroy();
 			geometryNodesBuffer.destroy();
 			lightBuffer.destroy();
 			initialSampleBuffer.destroy();
@@ -516,23 +506,23 @@ public:
 	/*
 		Create the Shader Binding Tables that binds the programs and top-level acceleration structure
 	*/
-	void createShaderBindingTables() {
+	void createInitialSampleShaderBindingTables() {
 		const uint32_t handleSize = rayTracingPipelineProperties.shaderGroupHandleSize;
 		const uint32_t handleSizeAligned = vks::tools::alignedSize(rayTracingPipelineProperties.shaderGroupHandleSize, rayTracingPipelineProperties.shaderGroupHandleAlignment);
-		const uint32_t groupCount = static_cast<uint32_t>(shaderGroups.size());
+		const uint32_t groupCount = static_cast<uint32_t>(initialSampleRayTracing.shaderGroups.size());
 		const uint32_t sbtSize = groupCount * handleSizeAligned;
 
 		std::vector<uint8_t> shaderHandleStorage(sbtSize);
-		VK_CHECK_RESULT(vkGetRayTracingShaderGroupHandlesKHR(device, pipeline, 0, groupCount, sbtSize, shaderHandleStorage.data()));
+		VK_CHECK_RESULT(vkGetRayTracingShaderGroupHandlesKHR(device, initialSampleRayTracing.pipeline, 0, groupCount, sbtSize, shaderHandleStorage.data()));
 
-		createShaderBindingTable(shaderBindingTables.raygen, 1);
-		createShaderBindingTable(shaderBindingTables.miss, 1);
-		createShaderBindingTable(shaderBindingTables.hit, 1);
+		createShaderBindingTable(initialSampleRayTracing.shaderBindingTables.raygen, 1);
+		createShaderBindingTable(initialSampleRayTracing.shaderBindingTables.miss, 1);
+		createShaderBindingTable(initialSampleRayTracing.shaderBindingTables.hit, 1);
 
 		// Copy handles
-		memcpy(shaderBindingTables.raygen.mapped, shaderHandleStorage.data(), handleSize);
-		memcpy(shaderBindingTables.miss.mapped, shaderHandleStorage.data() + handleSizeAligned, handleSize);
-		memcpy(shaderBindingTables.hit.mapped, shaderHandleStorage.data() + handleSizeAligned * 2, handleSize);
+		memcpy(initialSampleRayTracing.shaderBindingTables.raygen.mapped, shaderHandleStorage.data(), handleSize);
+		memcpy(initialSampleRayTracing.shaderBindingTables.miss.mapped, shaderHandleStorage.data() + handleSizeAligned, handleSize);
+		memcpy(initialSampleRayTracing.shaderBindingTables.hit.mapped, shaderHandleStorage.data() + handleSizeAligned * 2, handleSize);
 	}
 
 	/*
@@ -581,10 +571,10 @@ public:
 		setLayoutBindingFlags.bindingCount = descriptorBindingFlags.size();
 		VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
 		descriptorSetLayoutCI.pNext = &setLayoutBindingFlags;
-		VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr, &descriptorSetLayout));
+		VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr, &initialSampleRayTracing.descriptorSetLayout));
 
-		VkPipelineLayoutCreateInfo pipelineLayoutCI = vks::initializers::pipelineLayoutCreateInfo(&descriptorSetLayout, 1);
-		VK_CHECK_RESULT(vkCreatePipelineLayout(device, &pipelineLayoutCI, nullptr, &pipelineLayout));
+		VkPipelineLayoutCreateInfo pipelineLayoutCI = vks::initializers::pipelineLayoutCreateInfo(&initialSampleRayTracing.descriptorSetLayout, 1);
+		VK_CHECK_RESULT(vkCreatePipelineLayout(device, &pipelineLayoutCI, nullptr, &initialSampleRayTracing.pipelineLayout));
 
 		/*
 			Setup ray tracing shader groups
@@ -601,7 +591,7 @@ public:
 			shaderGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
 			shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
 			shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
-			shaderGroups.push_back(shaderGroup);
+			initialSampleRayTracing.shaderGroups.push_back(shaderGroup);
 		}
 
 		// Miss group
@@ -615,7 +605,7 @@ public:
 			shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
 
 			shaderGroup.generalShader = static_cast<uint32_t>(shaderStages.size()) - 1;
-			shaderGroups.push_back(shaderGroup);
+			initialSampleRayTracing.shaderGroups.push_back(shaderGroup);
 		}
 
 		// Closest hit group for doing texture lookups
@@ -628,7 +618,7 @@ public:
 			shaderGroup.closestHitShader = static_cast<uint32_t>(shaderStages.size()) - 1;
 			shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
 			shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
-			shaderGroups.push_back(shaderGroup);
+			initialSampleRayTracing.shaderGroups.push_back(shaderGroup);
 		}
 
 		/*
@@ -638,11 +628,11 @@ public:
 		rayTracingPipelineCI.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
 		rayTracingPipelineCI.stageCount = static_cast<uint32_t>(shaderStages.size());
 		rayTracingPipelineCI.pStages = shaderStages.data();
-		rayTracingPipelineCI.groupCount = static_cast<uint32_t>(shaderGroups.size());
-		rayTracingPipelineCI.pGroups = shaderGroups.data();
+		rayTracingPipelineCI.groupCount = static_cast<uint32_t>(initialSampleRayTracing.shaderGroups.size());
+		rayTracingPipelineCI.pGroups = initialSampleRayTracing.shaderGroups.data();
 		rayTracingPipelineCI.maxPipelineRayRecursionDepth = 1;
-		rayTracingPipelineCI.layout = pipelineLayout;
-		VK_CHECK_RESULT(vkCreateRayTracingPipelinesKHR(device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &rayTracingPipelineCI, nullptr, &pipeline));
+		rayTracingPipelineCI.layout = initialSampleRayTracing.pipelineLayout;
+		VK_CHECK_RESULT(vkCreateRayTracingPipelinesKHR(device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &rayTracingPipelineCI, nullptr, &initialSampleRayTracing.pipeline));
 	}
 
 	void createDescriptorPool()
@@ -685,11 +675,11 @@ public:
 
 		// Sets per frame, just like the buffers themselves
 		// Acceleration structure and images do not need to be duplicated per frame, we use the same for each descriptor to keep things simple
-		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = vks::initializers::descriptorSetAllocateInfo(descriptorPool, &descriptorSetLayout, 1);
+		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = vks::initializers::descriptorSetAllocateInfo(descriptorPool, &initialSampleRayTracing.descriptorSetLayout, 1);
 		// Required for the variable no. of images used by the glTF model
 		descriptorSetAllocateInfo.pNext = &variableDescriptorCountAllocInfo;
 		for (auto i = 0; i < maxConcurrentFrames; i++) {
-			VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &descriptorSetAllocateInfo, &descriptorSets[i]));
+			VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &descriptorSetAllocateInfo, &initialSampleRayTracing.descriptorSets[i]));
 
 			VkWriteDescriptorSetAccelerationStructureKHR descriptorAccelerationStructureInfo = vks::initializers::writeDescriptorSetAccelerationStructureKHR();
 			descriptorAccelerationStructureInfo.accelerationStructureCount = 1;
@@ -699,7 +689,7 @@ public:
 			accelerationStructureWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 			// The specialized acceleration structure descriptor has to be chained
 			accelerationStructureWrite.pNext = &descriptorAccelerationStructureInfo;
-			accelerationStructureWrite.dstSet = descriptorSets[i];
+			accelerationStructureWrite.dstSet = initialSampleRayTracing.descriptorSets[i];
 			accelerationStructureWrite.dstBinding = 0;
 			accelerationStructureWrite.descriptorCount = 1;
 			accelerationStructureWrite.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
@@ -712,19 +702,19 @@ public:
 				// Binding 0: Top level acceleration structure
 				accelerationStructureWrite,
 				// Binding 1: Ray tracing result image
-				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &storageImageDescriptor),
+				vks::initializers::writeDescriptorSet(initialSampleRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &storageImageDescriptor),
 				// Binding 2: Uniform data
-				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2, &cameraPropertiesUniformBuffers[i].descriptor),
+				vks::initializers::writeDescriptorSet(initialSampleRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2, &cameraPropertiesUniformBuffers[i].descriptor),
 				// Binding 3: light Data
-				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &lightBuffer.descriptor),
+				vks::initializers::writeDescriptorSet(initialSampleRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &lightBuffer.descriptor),
 				// Binding 4: Geometry node information SSBO
-				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &geometryNodesBuffer.descriptor),
+				vks::initializers::writeDescriptorSet(initialSampleRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &geometryNodesBuffer.descriptor),
 				// Binding 6: Initial Sample Buffer
-				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6, &initialSampleBuffer.descriptor),
+				vks::initializers::writeDescriptorSet(initialSampleRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6, &initialSampleBuffer.descriptor),
 				// Binding 7: Cur Depth Image
-				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7, &curDepthImageDescriptor),
+				vks::initializers::writeDescriptorSet(initialSampleRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7, &curDepthImageDescriptor),
 				// Binding 8: Cur Normal Image
-				vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8, &curNormalImageDescriptor)
+				vks::initializers::writeDescriptorSet(initialSampleRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8, &curNormalImageDescriptor)
 			};
 
 			// Image descriptors for the variable no. of images of the glTF model
@@ -742,7 +732,7 @@ public:
 			writeDescriptorImgArray.dstBinding = 5;
 			writeDescriptorImgArray.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 			writeDescriptorImgArray.descriptorCount = imageCount;
-			writeDescriptorImgArray.dstSet = descriptorSets[i];
+			writeDescriptorImgArray.dstSet = initialSampleRayTracing.descriptorSets[i];
 			writeDescriptorImgArray.pImageInfo = textureDescriptors.data();
 			writeDescriptorSets.push_back(writeDescriptorImgArray);
 
@@ -812,8 +802,6 @@ public:
 
 	void prepareTemporalReuseCompute()
 	{
-
-
 		// Some objects need to be duplicated per frames in flight
 		
 		// Setup descriptors
@@ -860,6 +848,13 @@ public:
 		VK_CHECK_RESULT(vkCreateComputePipelines(device, pipelineCache, 1, &computePipelineCreateInfo, nullptr, &temporalReuseCompute.pipeline));
 	}
 
+	void prepareInitialSampleRayTracing()
+	{
+		createInitialSampleRayTracingPipeline();
+		createInitialSampleShaderBindingTables();
+		createInitialSampleRayTracingDescriptorSets();
+	}
+	
 	void updatePingPongDescriptorSets()
 	{
 		// ----------------------------temporal reuse --------------------------------
@@ -883,7 +878,7 @@ public:
 		// Update descriptors
 		VkDescriptorImageInfo storageImageDescriptor{ VK_NULL_HANDLE, storageImage.view, VK_IMAGE_LAYOUT_GENERAL };
 		for (auto i = 0; i < maxConcurrentFrames; i++) {
-			VkWriteDescriptorSet resultImageWrite = vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &storageImageDescriptor);
+			VkWriteDescriptorSet resultImageWrite = vks::initializers::writeDescriptorSet(initialSampleRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &storageImageDescriptor);
 			vkUpdateDescriptorSets(device, 1, &resultImageWrite, 0, VK_NULL_HANDLE);
 		}
 		resized = false;
@@ -955,13 +950,10 @@ public:
 		createLightBuffer();
 		createSampleBuffer();
 		createReservoirBuffer();
-		
-		createInitialSampleRayTracingPipeline();
-		createShaderBindingTables();
-		
-		createDescriptorPool();
-		createInitialSampleRayTracingDescriptorSets();
 
+		createDescriptorPool();
+
+		prepareInitialSampleRayTracing();
 		prepareTemporalReuseCompute();
 		prepared = true;
 	}
@@ -981,15 +973,15 @@ public:
 
 		VK_CHECK_RESULT(vkBeginCommandBuffer(cmdBuffer, &cmdBufInfo));
 		// -----------------------------initial sampling---------------------------------
-		vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
-		vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipelineLayout, 0, 1, &descriptorSets[currentBuffer], 0, 0);
+		vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, initialSampleRayTracing.pipeline);
+		vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, initialSampleRayTracing.pipelineLayout, 0, 1, &initialSampleRayTracing.descriptorSets[currentBuffer], 0, 0);
 
 		VkStridedDeviceAddressRegionKHR emptySbtEntry = {};
 		vkCmdTraceRaysKHR(
 			cmdBuffer,
-			&shaderBindingTables.raygen.stridedDeviceAddressRegion,
-			&shaderBindingTables.miss.stridedDeviceAddressRegion,
-			&shaderBindingTables.hit.stridedDeviceAddressRegion,
+			&initialSampleRayTracing.shaderBindingTables.raygen.stridedDeviceAddressRegion,
+			&initialSampleRayTracing.shaderBindingTables.miss.stridedDeviceAddressRegion,
+			&initialSampleRayTracing.shaderBindingTables.hit.stridedDeviceAddressRegion,
 			&emptySbtEntry,
 			width,
 			height,
