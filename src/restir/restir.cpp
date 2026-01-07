@@ -46,6 +46,7 @@ public:
 
 	InitialSampleRayTracing initialSampleRayTracing;
 	TemporalReuseCompute temporalReuseCompute;
+	SpatialReuseRayTracing spatialReuseRayTracing;
 	
 	uint32_t pingPongIdx = 0;
 
@@ -89,22 +90,35 @@ public:
 			vkDestroyPipeline(device, initialSampleRayTracing.pipeline, nullptr);
 			vkDestroyPipelineLayout(device, initialSampleRayTracing.pipelineLayout, nullptr);
 			vkDestroyDescriptorSetLayout(device, initialSampleRayTracing.descriptorSetLayout, nullptr);
+			
+			vkDestroyPipeline(device, spatialReuseRayTracing.pipeline, nullptr);
+			vkDestroyPipelineLayout(device, spatialReuseRayTracing.pipelineLayout, nullptr);
+			vkDestroyDescriptorSetLayout(device, spatialReuseRayTracing.descriptorSetLayout, nullptr);
+			
 			deleteStorageImage();
 			deleteRestirStorageImage(prevDepthImage);
 			deleteRestirStorageImage(prevNormalImage);
 			deleteRestirStorageImage(curDepthImage);
 			deleteRestirStorageImage(curNormalImage);
+			
 			deleteAccelerationStructure(bottomLevelAS);
 			deleteAccelerationStructure(topLevelAS);
+			
 			vertexBuffer.destroy();
 			indexBuffer.destroy();
+			
 			initialSampleRayTracing.shaderBindingTables.raygen.destroy();
 			initialSampleRayTracing.shaderBindingTables.miss.destroy();
 			initialSampleRayTracing.shaderBindingTables.hit.destroy();
+
+			spatialReuseRayTracing.shaderBindingTables.raygen.destroy();
+			spatialReuseRayTracing.shaderBindingTables.miss.destroy();
+			spatialReuseRayTracing.shaderBindingTables.hit.destroy();
+			
 			geometryNodesBuffer.destroy();
 			lightBuffer.destroy();
-			initialSampleBuffer.destroy();
 			
+			initialSampleBuffer.destroy();
 			temporalSampleBuffer[0].destroy();
 			spatialSampleBuffer[0].destroy();
 			temporalSampleBuffer[1].destroy();
@@ -115,6 +129,9 @@ public:
 			vkDestroyDescriptorSetLayout(device, temporalReuseCompute.descriptorSetLayout, nullptr);
 			
 			for (auto& buffer : cameraPropertiesUniformBuffers) {
+				buffer.destroy();
+			}
+			for (auto& buffer : frameDataUniformBuffers) {
 				buffer.destroy();
 			}
 		}
@@ -525,6 +542,25 @@ public:
 		memcpy(initialSampleRayTracing.shaderBindingTables.hit.mapped, shaderHandleStorage.data() + handleSizeAligned * 2, handleSize);
 	}
 
+	void createSpatialReuseShaderBindingTables() {
+		const uint32_t handleSize = rayTracingPipelineProperties.shaderGroupHandleSize;
+		const uint32_t handleSizeAligned = vks::tools::alignedSize(rayTracingPipelineProperties.shaderGroupHandleSize, rayTracingPipelineProperties.shaderGroupHandleAlignment);
+		const uint32_t groupCount = static_cast<uint32_t>(spatialReuseRayTracing.shaderGroups.size());
+		const uint32_t sbtSize = groupCount * handleSizeAligned;
+
+		std::vector<uint8_t> shaderHandleStorage(sbtSize);
+		VK_CHECK_RESULT(vkGetRayTracingShaderGroupHandlesKHR(device, spatialReuseRayTracing.pipeline, 0, groupCount, sbtSize, shaderHandleStorage.data()));
+
+		createShaderBindingTable(spatialReuseRayTracing.shaderBindingTables.raygen, 1);
+		createShaderBindingTable(spatialReuseRayTracing.shaderBindingTables.miss, 1);
+		createShaderBindingTable(spatialReuseRayTracing.shaderBindingTables.hit, 1);
+
+		// Copy handles
+		memcpy(spatialReuseRayTracing.shaderBindingTables.raygen.mapped, shaderHandleStorage.data(), handleSize);
+		memcpy(spatialReuseRayTracing.shaderBindingTables.miss.mapped, shaderHandleStorage.data() + handleSizeAligned, handleSize);
+		memcpy(spatialReuseRayTracing.shaderBindingTables.hit.mapped, shaderHandleStorage.data() + handleSizeAligned * 2, handleSize);
+	}
+
 	/*
 		Create our ray tracing pipeline
 	*/
@@ -635,6 +671,104 @@ public:
 		VK_CHECK_RESULT(vkCreateRayTracingPipelinesKHR(device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &rayTracingPipelineCI, nullptr, &initialSampleRayTracing.pipeline));
 	}
 
+	void createSpatialReuseRayTracingPipeline()
+	{
+		std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
+			// Binding 0: Top level acceleration structure
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 0),
+			// Binding 1: Temporal reservoir buffer out
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 1),
+			// Binding 2: Spatial Reservoir Buffer In
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 2),
+			// Binding 3: Spatial Reservoir Buffer Out
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 3),
+			// Binding 4: Cur Depth Image
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 4),
+			// Binding 5: Cur Normal Image
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 5),
+			// Binding 6: Frame Data Uniform Buffer
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 6),
+		};
+
+		// Unbound set
+		VkDescriptorSetLayoutBindingFlagsCreateInfoEXT setLayoutBindingFlags{};
+		setLayoutBindingFlags.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT;
+		std::vector<VkDescriptorBindingFlagsEXT> descriptorBindingFlags = {
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+			0,
+		};
+		setLayoutBindingFlags.pBindingFlags = descriptorBindingFlags.data();
+		setLayoutBindingFlags.bindingCount = descriptorBindingFlags.size();
+		VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
+		descriptorSetLayoutCI.pNext = &setLayoutBindingFlags;
+		VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr, &spatialReuseRayTracing.descriptorSetLayout));
+
+		VkPipelineLayoutCreateInfo pipelineLayoutCI = vks::initializers::pipelineLayoutCreateInfo(&spatialReuseRayTracing.descriptorSetLayout, 1);
+		VK_CHECK_RESULT(vkCreatePipelineLayout(device, &pipelineLayoutCI, nullptr, &spatialReuseRayTracing.pipelineLayout));
+
+		/*
+			Setup ray tracing shader groups
+		*/
+		std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+
+		// Ray generation group
+		{
+			shaderStages.push_back(loadShader(getShadersPath() + "restir/spatialreuse.rgen.spv", VK_SHADER_STAGE_RAYGEN_BIT_KHR));
+			VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
+			shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+			shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+			shaderGroup.generalShader = static_cast<uint32_t>(shaderStages.size()) - 1;
+			shaderGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
+			shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
+			shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+			spatialReuseRayTracing.shaderGroups.push_back(shaderGroup);
+		}
+
+		// Miss group
+		{
+			shaderStages.push_back(loadShader(getShadersPath() + "restir/spatialreuse.rmiss.spv", VK_SHADER_STAGE_MISS_BIT_KHR));
+			VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
+			shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+			shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+			shaderGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
+			shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
+			shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+			shaderGroup.generalShader = static_cast<uint32_t>(shaderStages.size()) - 1;
+			spatialReuseRayTracing.shaderGroups.push_back(shaderGroup);
+		}
+
+		// Closest hit group for doing texture lookups
+		{
+			shaderStages.push_back(loadShader(getShadersPath() + "restir/spatialreuse.rchit.spv", VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR));
+			VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
+			shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
+			shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
+			shaderGroup.generalShader = VK_SHADER_UNUSED_KHR;
+			shaderGroup.closestHitShader = static_cast<uint32_t>(shaderStages.size()) - 1;
+			shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+			shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
+			spatialReuseRayTracing.shaderGroups.push_back(shaderGroup);
+		}
+
+		/*
+			Create the ray tracing pipeline
+		*/
+		VkRayTracingPipelineCreateInfoKHR rayTracingPipelineCI{};
+		rayTracingPipelineCI.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
+		rayTracingPipelineCI.stageCount = static_cast<uint32_t>(shaderStages.size());
+		rayTracingPipelineCI.pStages = shaderStages.data();
+		rayTracingPipelineCI.groupCount = static_cast<uint32_t>(spatialReuseRayTracing.shaderGroups.size());
+		rayTracingPipelineCI.pGroups = spatialReuseRayTracing.shaderGroups.data();
+		rayTracingPipelineCI.maxPipelineRayRecursionDepth = 1;
+		rayTracingPipelineCI.layout = spatialReuseRayTracing.pipelineLayout;
+		VK_CHECK_RESULT(vkCreateRayTracingPipelinesKHR(device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &rayTracingPipelineCI, nullptr, &spatialReuseRayTracing.pipeline));
+	}
+
 	void createDescriptorPool()
 	{
 		std::vector<VkDescriptorPoolSize> poolSizes = {
@@ -652,6 +786,11 @@ public:
 			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames * 3 },
 			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames * 4},
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
+			// --------------------------Spatial reuse--------------------------------
+			{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxConcurrentFrames},
+				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames * 3 },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames * 2},
+				{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
 		};
 		//std::cout << "total texture = " << scene.textures.size() << std::endl; // 49
 		// initial sample pass
@@ -740,6 +879,46 @@ public:
 		}
 	}
 
+	void createSpatialReuseRayTracingDescriptorSets()
+	{
+		// Sets per frame, just like the buffers themselves
+		// Acceleration structure and images do not need to be duplicated per frame, we use the same for each descriptor to keep things simple
+		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = vks::initializers::descriptorSetAllocateInfo(descriptorPool, &spatialReuseRayTracing.descriptorSetLayout, 1);
+		for (auto i = 0; i < maxConcurrentFrames; i++) {
+			VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &descriptorSetAllocateInfo, &spatialReuseRayTracing.descriptorSets[i]));
+
+			VkWriteDescriptorSetAccelerationStructureKHR descriptorAccelerationStructureInfo = vks::initializers::writeDescriptorSetAccelerationStructureKHR();
+			descriptorAccelerationStructureInfo.accelerationStructureCount = 1;
+			descriptorAccelerationStructureInfo.pAccelerationStructures = &topLevelAS.handle;
+
+			VkWriteDescriptorSet accelerationStructureWrite{};
+			accelerationStructureWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			// The specialized acceleration structure descriptor has to be chained
+			accelerationStructureWrite.pNext = &descriptorAccelerationStructureInfo;
+			accelerationStructureWrite.dstSet = spatialReuseRayTracing.descriptorSets[i];
+			accelerationStructureWrite.dstBinding = 0;
+			accelerationStructureWrite.descriptorCount = 1;
+			accelerationStructureWrite.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+			
+			VkDescriptorImageInfo curDepthImageDescriptor{ VK_NULL_HANDLE, curDepthImage.view, VK_IMAGE_LAYOUT_GENERAL };
+			VkDescriptorImageInfo curNormalImageDescriptor{ VK_NULL_HANDLE, curNormalImage.view, VK_IMAGE_LAYOUT_GENERAL };
+
+			std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
+				// Binding 0: Top level acceleration structure
+				accelerationStructureWrite,
+				// Binding 4: Cur Depth Image
+				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4, &curDepthImageDescriptor),
+				// Binding 5: Cur Normal Image
+				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 5, &curNormalImageDescriptor),
+				// Binding 6: Frame Data Uniform Buffer
+				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 6, &frameDataUniformBuffers[i].descriptor),
+			};
+
+			// TODO: Ping Pong Update
+			vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, VK_NULL_HANDLE);
+		}
+	}
+
 	/*
 		Create the uniform buffer used to pass matrices to the ray tracing ray generation shader
 	*/
@@ -812,7 +991,7 @@ public:
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 3),
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 4),
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 5),
-			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 6),
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 6),
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 7),
 		};
 		VkDescriptorSetLayoutCreateInfo descriptorLayout = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
@@ -829,8 +1008,8 @@ public:
 			VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &allocInfo, &temporalReuseCompute.descriptorSets[i]));
 			std::vector<VkWriteDescriptorSet> computeWriteDescriptorSets = {
 				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 0, &initialSampleBuffer.descriptor),
-				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3, &prevDepthImageDescriptor),
-				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4, &prevNormalImageDescriptor),
+				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3, &curDepthImageDescriptor),
+				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4, &curNormalImageDescriptor),
 				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 5, &frameDataUniformBuffers[i].descriptor),
 				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 6, &prevDepthImageDescriptor),
 				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7, &prevNormalImageDescriptor),
@@ -854,16 +1033,32 @@ public:
 		createInitialSampleShaderBindingTables();
 		createInitialSampleRayTracingDescriptorSets();
 	}
+
+	void prepareSpatialReuseRayTracing()
+	{
+		createSpatialReuseRayTracingPipeline();
+		createSpatialReuseShaderBindingTables();
+		createSpatialReuseRayTracingDescriptorSets();
+	}
 	
 	void updatePingPongDescriptorSets()
 	{
 		// ----------------------------temporal reuse --------------------------------
 		for (auto i = 0; i < maxConcurrentFrames; i++) {
-			std::vector<VkWriteDescriptorSet> computeWriteDescriptorSets = {
+			std::vector<VkWriteDescriptorSet> temporalReuseWriteDescriptorSets = {
 				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, &temporalSampleBuffer[pingPongIdx].descriptor),
 				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &temporalSampleBuffer[1 - pingPongIdx].descriptor),
 			};
-			vkUpdateDescriptorSets(device, static_cast<uint32_t>(computeWriteDescriptorSets.size()), computeWriteDescriptorSets.data(), 0, nullptr);
+			vkUpdateDescriptorSets(device, static_cast<uint32_t>(temporalReuseWriteDescriptorSets.size()), temporalReuseWriteDescriptorSets.data(), 0, nullptr);
+		}
+		// ----------------------------spatial reuse --------------------------------
+		for (auto i = 0; i < maxConcurrentFrames; i++) {
+			std::vector<VkWriteDescriptorSet> spatialReuseWriteDescriptorSets = {
+				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, &temporalSampleBuffer[1 - pingPongIdx].descriptor),
+				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &spatialSampleBuffer[pingPongIdx].descriptor),
+				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &spatialSampleBuffer[1 - pingPongIdx].descriptor),
+			};
+			vkUpdateDescriptorSets(device, static_cast<uint32_t>(spatialReuseWriteDescriptorSets.size()), spatialReuseWriteDescriptorSets.data(), 0, nullptr);
 		}
 		pingPongIdx = 1 - pingPongIdx;
 	}
@@ -955,6 +1150,7 @@ public:
 
 		prepareInitialSampleRayTracing();
 		prepareTemporalReuseCompute();
+		prepareSpatialReuseRayTracing();
 		prepared = true;
 	}
 

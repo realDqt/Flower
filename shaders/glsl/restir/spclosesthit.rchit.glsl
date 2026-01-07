@@ -12,7 +12,6 @@
 layout(location = 0) rayPayloadInEXT RayPayload hitValue;
 hitAttributeEXT vec2 attribs;
 
-layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
 layout(binding = 3, set = 0) buffer DirectionalLight{
     vec4 direction; // 平行光方向 (从光源指向场景)
     vec4 emission;  // 强度/颜色
@@ -131,7 +130,5 @@ void main()
         hitValue.worldNormal = calcWorldNormalByInterpolation(tri);
     }
     hitValue.dis = gl_HitTEXT;
-
-    //traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, hitValue.worldPos, 0.001, -directionalLight.direction, 10000, 0);
     
 }

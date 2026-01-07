@@ -50,14 +50,22 @@ struct InitialSampleRayTracing
     std::array<VkDescriptorSet, maxConcurrentFrames> descriptorSets{};
 };
 
-
-
 // Resources for the compute part of the example
 struct TemporalReuseCompute {
-    VkQueue queue{ VK_NULL_HANDLE };									// Separate queue for compute commands (queue family may differ from the one used for graphics)
     VkDescriptorSetLayout descriptorSetLayout{ VK_NULL_HANDLE };		// Compute shader binding layout
     VkPipelineLayout pipelineLayout{ VK_NULL_HANDLE };					// Layout of the compute pipeline
     VkPipeline pipeline{ VK_NULL_HANDLE };								// Compute raytracing pipeline
+    std::array<VkDescriptorSet, maxConcurrentFrames> descriptorSets{};
+};
+
+// Resources for the spatial reuse
+struct SpatialReuseRayTracing
+{
+    std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups{};
+    ShaderBindingTables shaderBindingTables;
+    VkPipeline pipeline{ VK_NULL_HANDLE };
+    VkPipelineLayout pipelineLayout{ VK_NULL_HANDLE };
+    VkDescriptorSetLayout descriptorSetLayout{ VK_NULL_HANDLE };
     std::array<VkDescriptorSet, maxConcurrentFrames> descriptorSets{};
 };
 

@@ -21,21 +21,17 @@ layout(binding = 3, set = 0) buffer SpatialReservoirBufferOut{
 layout(binding = 4, set = 0, r32f) uniform image2D curDepthImage;
 layout(binding = 5, set = 0, rgba32f) uniform image2D curNormalImage;
 
-layout(binding = 6, set = 0) uniform FrameData{
-    mat4 currentInvView;        // 当前帧矩阵信息
-    mat4 currentInvProj;
+layout(binding = 5, set = 0) uniform FrameData{
+    mat4 currentInvViewProj;    // 当前帧矩阵信息
     mat4 prevViewProj;          // 上一帧矩阵信息
-    vec4 forward;
     uint frame;
-    float zNear;
-    float zFar;
 } frameData;
 
 layout(location = 0) rayPayloadEXT RayPayload hitValue;
 
 vec3 getWorldPos(vec2 uv, float depth) {
     vec4 ndc = vec4(uv * 2.0 - 1.0, depth, 1.0);
-    vec4 worldPos = frameData.currentInvView * frameData.currentInvProj * ndc;
+    vec4 worldPos = frameData.currentInvViewProj * ndc;
     return worldPos.xyz / worldPos.w;
 }
 
