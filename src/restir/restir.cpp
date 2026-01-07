@@ -688,12 +688,15 @@ public:
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 5),
 			// Binding 6: Frame Data Uniform Buffer
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 6),
+			// Binding 7: Ray tracing result image
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 7),
 		};
 
 		// Unbound set
 		VkDescriptorSetLayoutBindingFlagsCreateInfoEXT setLayoutBindingFlags{};
 		setLayoutBindingFlags.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT;
 		std::vector<VkDescriptorBindingFlagsEXT> descriptorBindingFlags = {
+			0,
 			0,
 			0,
 			0,
@@ -789,7 +792,7 @@ public:
 			// --------------------------Spatial reuse--------------------------------
 			{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxConcurrentFrames},
 				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames * 3 },
-				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames * 2},
+				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames * 3},
 				{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
 		};
 		//std::cout << "total texture = " << scene.textures.size() << std::endl; // 49
@@ -902,7 +905,8 @@ public:
 			
 			VkDescriptorImageInfo curDepthImageDescriptor{ VK_NULL_HANDLE, curDepthImage.view, VK_IMAGE_LAYOUT_GENERAL };
 			VkDescriptorImageInfo curNormalImageDescriptor{ VK_NULL_HANDLE, curNormalImage.view, VK_IMAGE_LAYOUT_GENERAL };
-
+			VkDescriptorImageInfo storageImageDescriptor{ VK_NULL_HANDLE, storageImage.view, VK_IMAGE_LAYOUT_GENERAL };
+			
 			std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
 				// Binding 0: Top level acceleration structure
 				accelerationStructureWrite,
@@ -912,6 +916,8 @@ public:
 				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 5, &curNormalImageDescriptor),
 				// Binding 6: Frame Data Uniform Buffer
 				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 6, &frameDataUniformBuffers[i].descriptor),
+				// Binding 7: Ray tracing result image
+				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7, &storageImageDescriptor),
 			};
 
 			// TODO: Ping Pong Update

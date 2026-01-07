@@ -1,6 +1,7 @@
 ﻿#version 460
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_ray_tracing : require
+#extension GL_EXT_shader_image_load_formatted : enable
 #include "spcommon.glsl"
 #include "restircommon.glsl"
 
@@ -18,14 +19,16 @@ layout(binding = 3, set = 0) buffer SpatialReservoirBufferOut{
     Reservoir data[];
 } spatialReservoirBufferOut;
 
-layout(binding = 4, set = 0, r32f) uniform image2D curDepthImage;
-layout(binding = 5, set = 0, rgba32f) uniform image2D curNormalImage;
+layout(binding = 4, set = 0) uniform image2D curDepthImage;
+layout(binding = 5, set = 0) uniform image2D curNormalImage;
 
-layout(binding = 5, set = 0) uniform FrameData{
+layout(binding = 6, set = 0) uniform FrameData{
     mat4 currentInvViewProj;    // 当前帧矩阵信息
     mat4 prevViewProj;          // 上一帧矩阵信息
     uint frame;
 } frameData;
+
+layout(binding = 7, set = 0, rgba32f) uniform image2D image;
 
 layout(location = 0) rayPayloadEXT RayPayload hitValue;
 
@@ -87,6 +90,13 @@ bool isVisibleAB(vec3 pos_a, vec3 pos_b)
     hitValue.dis = 1.0f;
     traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
     return hitValue.dis > 0.0f;
+}
+vec3 calcFinalLighting(Reservoir r)
+{
+    vec3 Li = r.z.Lo.rgb;
+    vec3 fr = r.z.baseColor_v.rgb / M_PI;
+    float cosTheta = max(dot(r.z.n_v.xyz, normalize(r.z.x_s.xyz - r.z.x_v.xyz)), 0.0f);
+    return Li * fr * cosTheta;
 }
 
 void main() {
@@ -154,4 +164,6 @@ void main() {
     }
     
     spatialReservoirBufferOut.data[idx_q] = R_s;
+    vec3 color = calcFinalLighting(R_s);
+    imageStore(image, ivec2(pixel_q), vec4(color, 1.0f));
 }
