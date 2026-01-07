@@ -1224,21 +1224,53 @@ public:
 		uint32_t groupY = (height + 15) / 16;
 		vkCmdDispatch(cmdBuffer, groupX, groupY, 1);
 		
-		// Synchronization: Barrier (Compute Write -> Transfer/Graphics Read)
-		VkMemoryBarrier computeFinishBarrier = {};
-		computeFinishBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-		computeFinishBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-		computeFinishBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
+	   // Barrier 2: Temporal Reuse (Compute) -> Spatial Reuse (Ray Tracing)
+	   VkMemoryBarrier temporalToSpatialBarrier = {};
+	   temporalToSpatialBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	   temporalToSpatialBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT; 
+	   temporalToSpatialBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT; 
 
-		vkCmdPipelineBarrier(
-			cmdBuffer,
-			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-			VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-			0,
-			1, &computeFinishBarrier,
-			0, nullptr,
-			0, nullptr
-		);
+	   vkCmdPipelineBarrier(
+	      cmdBuffer,
+	      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,            
+	      VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,    
+	      0,
+	      1, &temporalToSpatialBarrier,
+	      0, nullptr,
+	      0, nullptr
+	   );
+
+		// -----------------------------spatial reuse---------------------------------
+	   vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, spatialReuseRayTracing.pipeline);
+	   vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, spatialReuseRayTracing.pipelineLayout, 0, 1, &spatialReuseRayTracing.descriptorSets[currentBuffer], 0, 0);
+
+	   vkCmdTraceRaysKHR(
+	      cmdBuffer,
+	      &spatialReuseRayTracing.shaderBindingTables.raygen.stridedDeviceAddressRegion,
+	      &spatialReuseRayTracing.shaderBindingTables.miss.stridedDeviceAddressRegion,
+	      &spatialReuseRayTracing.shaderBindingTables.hit.stridedDeviceAddressRegion,
+	      &emptySbtEntry, // Spatial Reuse 通常不需要 Miss/Hit shader，如果在 RayGen 里做完了一切
+	      width,
+	      height,
+	      1);
+		
+	   // Barrier 3: Spatial Reuse (RT) -> Transfer (Copy to Swapchain)
+	   VkMemoryBarrier spatialFinishBarrier = {};
+	   spatialFinishBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	   spatialFinishBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	   spatialFinishBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+	   // Image Barrier
+	   vkCmdPipelineBarrier(
+	      cmdBuffer,
+	      VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, 
+	      VK_PIPELINE_STAGE_TRANSFER_BIT,
+	      0,
+	      1, &spatialFinishBarrier,
+	      0, nullptr,
+	      0, nullptr
+	   );
+		
 		
 		/*
 			Copy ray tracing output to swap chain image
