@@ -177,6 +177,7 @@ void main() {
         vec3 norm_qn = decodeNormal(imageLoad(curNormalImage, ivec2(pixel_qn)).xyz);
         vec3 pos_qn = getWorldPos(uv_qn, depth_qn);
         float jacobian = calcJacobian(pos_q, pos_qn, R_n.z.x_s.xyz, R_n.z.n_s.xyz);
+        jacobian = clamp(jacobian, 0.1, 10.0);
         
         float pq_hat_prime = pq_hat(pos_q, norm_q, R_n.z) / jacobian;
         if (!isVisibleAB(pos_q, R_n.z.x_s.xyz)) {
@@ -191,13 +192,13 @@ void main() {
     float pq_hat_final = pq_hat(pos_q, norm_q, R_s.z);
     if(pq_hat_final > 0.0 && isVisibleAB(pos_q, R_s.z.x_s.xyz)){
         for(int i = 0; i < neighborCount; ++i){
-            if(pq_hat(neighbors[i].pos_qn, neighbors[i].norm_qn, R_s.z) > 0){
-                Z = Z + neighbors[i].M;
+            float pq_hat_neighbor = pq_hat(neighbors[i].pos_qn, neighbors[i].norm_qn, R_s.z);
+            if(pq_hat_neighbor > 0){
+                if(isVisibleAB(neighbors[i].pos_qn, R_s.z.x_s.xyz)) {
+                    Z = Z + neighbors[i].M;
+                }
             }
         }
-    }
-    
-    if(Z > 0){
         R_s.W = R_s.w / (float(Z) * pq_hat(pos_q, norm_q, R_s.z));
     }else{
         R_s.W = 0.0;
@@ -206,5 +207,6 @@ void main() {
     spatialReservoirBufferOut.data[idx_q] = R_s;
     vec3 directLighting = calcDirectLighting();
     vec3 indrectLighting = calcIndirectLighting(R_s);
+    if(any(isnan(indrectLighting)) || any(isinf(indrectLighting))) indrectLighting = vec3(0.0);
     imageStore(image, ivec2(pixel_q), vec4(directLighting + indrectLighting, 1.0f));
 }
