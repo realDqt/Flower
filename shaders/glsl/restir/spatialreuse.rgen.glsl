@@ -206,7 +206,8 @@ void main() {
     
     spatialReservoirBufferOut.data[idx_q] = R_s;
     vec3 directLighting = calcDirectLighting();
-    vec3 indrectLighting = calcIndirectLighting(R_s);
-    if(any(isnan(indrectLighting)) || any(isinf(indrectLighting))) indrectLighting = vec3(0.0);
-    imageStore(image, ivec2(pixel_q), vec4(directLighting + indrectLighting, 1.0f));
+    vec3 indirectLighting = calcIndirectLighting(R_s);
+    if(any(isnan(directLighting)) || any(isinf(directLighting))) directLighting = vec3(0.0);
+    if(any(isnan(indirectLighting)) || any(isinf(indirectLighting))) indirectLighting = vec3(0.0);
+    imageStore(image, ivec2(pixel_q), vec4(directLighting + indirectLighting, 1.0f));
 }
