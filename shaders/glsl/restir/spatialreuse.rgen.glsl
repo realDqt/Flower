@@ -102,8 +102,8 @@ vec3 calcIndirectLighting(Reservoir r)
 {
     uvec2 pixel_q = gl_LaunchIDEXT.xy;
     vec4 pos_q = imageLoad(curWorldPositionImage, ivec2(pixel_q));
-    //if(pos_q.w < 0.0f) return vec3(0.0f);
-    //if(dot(pos_q.xyz - r.z.x_s.xyz, r.z.n_s.xyz) < 0.0f) return vec3(0.0f);
+    if(pos_q.w < 0.0f) return vec3(0.0f);
+    if(dot(pos_q.xyz - r.z.x_s.xyz, r.z.n_s.xyz) < 0.0f) return vec3(0.0f);
     vec3 norm_q = imageLoad(curNormalImage, ivec2(pixel_q)).xyz;
     vec4 albedo = imageLoad(curAlbedoImage, ivec2(pixel_q));
     
@@ -117,9 +117,9 @@ vec3 calcDirectLighting()
 {
     uvec2 pixel_q = gl_LaunchIDEXT.xy;
     vec4 pos_q = imageLoad(curWorldPositionImage, ivec2(pixel_q));
-    //if(pos_q.w < 0.0f) return vec3(0.0f);
+    if(pos_q.w < 0.0f) return vec3(0.0f);
     
-    vec3 norm_q = imageLoad(curNormalImage, ivec2(pixel_q)).xyz;
+    vec3 norm_q = decodeNormal(imageLoad(curNormalImage, ivec2(pixel_q)).xyz);
     vec4 albedo = imageLoad(curAlbedoImage, ivec2(pixel_q));
     
     vec3 L_dir = vec3(0.0);
@@ -139,6 +139,7 @@ vec3 calcDirectLighting()
 }
 
 void main() {
+    //return;
     uvec2 pixel_q = gl_LaunchIDEXT.xy;
     if(pixel_q.x >= WIDTH || pixel_q.y >= HEIGHT) return;
     
@@ -203,6 +204,7 @@ void main() {
     }
     
     spatialReservoirBufferOut.data[idx_q] = R_s;
-    vec3 color = calcDirectLighting() + calcIndirectLighting(R_s);
-    imageStore(image, ivec2(pixel_q), vec4(color, 1.0f));
+    vec3 directLighting = calcDirectLighting();
+    vec3 indrectLighting = calcIndirectLighting(R_s);
+    imageStore(image, ivec2(pixel_q), vec4(directLighting + indrectLighting, 1.0f));
 }

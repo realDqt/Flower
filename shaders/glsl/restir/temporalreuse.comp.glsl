@@ -76,6 +76,7 @@ ivec2 getPrevSC(uvec2 sc)
 }
 
 void main() {
+    //return;
     uvec2 pixel = gl_GlobalInvocationID.xy;
     if (pixel.x >= WIDTH || pixel.y >= HEIGHT) return;
     uint idx = getCoord1D(pixel);

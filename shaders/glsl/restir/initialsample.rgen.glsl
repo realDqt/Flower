@@ -193,7 +193,7 @@ void initialSample(inout uint seed)
     initialSampleBuffer.data[idx].n_s.xyz = hitValue.worldNormal;
 
     // 3. calc Lo
-    initialSampleBuffer.data[idx].Lo.xyz = calcNBounceLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.baseColor, -ray.direction, 0, seed);
+    initialSampleBuffer.data[idx].Lo.xyz = calcNBounceLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.baseColor, -ray.direction, GI_BOUNCE - 1, seed);
 
     // 4. store seed
     initialSampleBuffer.data[idx].Random = seed;
@@ -205,7 +205,7 @@ void main()
     initialSample(seed);
 
     /*
-    const int SPP = 2;
+    const int SPP = 1;
     const int BOUNCE = 128; 
     vec3 accumaltedColor = vec3(0.0);
     for(int spp = 0; spp < SPP; ++spp){

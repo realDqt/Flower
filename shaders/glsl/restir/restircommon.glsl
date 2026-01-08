@@ -2,6 +2,7 @@
 #define MAX_HISTORY 20
 #define MAX_ITERATIONS 10
 #define SPATIAL_RADIUS 30.0
+#define GI_BOUNCE 128
 
 struct Sample {
     vec4 x_v;

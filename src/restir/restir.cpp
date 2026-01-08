@@ -629,7 +629,7 @@ public:
 
 		// Ray generation group
 		{
-			shaderStages.push_back(loadShader(getShadersPath() + "restir/spraygen.rgen.spv", VK_SHADER_STAGE_RAYGEN_BIT_KHR));
+			shaderStages.push_back(loadShader(getShadersPath() + "restir/initialsample.rgen.spv", VK_SHADER_STAGE_RAYGEN_BIT_KHR));
 			VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
 			shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
 			shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
@@ -642,7 +642,7 @@ public:
 
 		// Miss group
 		{
-			shaderStages.push_back(loadShader(getShadersPath() + "restir/spmiss.rmiss.spv", VK_SHADER_STAGE_MISS_BIT_KHR));
+			shaderStages.push_back(loadShader(getShadersPath() + "restir/initialsample.rmiss.spv", VK_SHADER_STAGE_MISS_BIT_KHR));
 			VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
 			shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
 			shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
@@ -656,7 +656,7 @@ public:
 
 		// Closest hit group for doing texture lookups
 		{
-			shaderStages.push_back(loadShader(getShadersPath() + "restir/spclosesthit.rchit.spv", VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR));
+			shaderStages.push_back(loadShader(getShadersPath() + "restir/initialsample.rchit.spv", VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR));
 			VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
 			shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
 			shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
