@@ -28,7 +28,14 @@ layout(binding = 6, set = 0) uniform FrameData{
     uint frame;
 } frameData;
 
-layout(binding = 7, set = 0, rgba32f) uniform image2D image;
+layout(binding = 7, set = 0) uniform image2D image;
+layout(binding = 8, set = 0) uniform image2D curWorldPositionImage;
+layout(binding = 9, set = 0) uniform image2D curAlbedoImage;
+
+layout(binding = 10, set = 0) buffer DirectionalLight{
+    vec3 direction; // 平行光方向 (从光源指向场景)
+    vec3 emission;  // 强度/颜色
+} directionalLight;
 
 layout(location = 0) rayPayloadEXT RayPayload hitValue;
 
@@ -91,12 +98,44 @@ bool isVisibleAB(vec3 pos_a, vec3 pos_b)
     traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
     return hitValue.dis > 0.0f;
 }
-vec3 calcFinalLighting(Reservoir r)
+vec3 calcIndirectLighting(Reservoir r)
 {
-    vec3 Li = r.z.Lo.rgb;
-    vec3 fr = r.z.baseColor_v.rgb / M_PI;
-    float cosTheta = max(dot(r.z.n_v.xyz, normalize(r.z.x_s.xyz - r.z.x_v.xyz)), 0.0f);
+    uvec2 pixel_q = gl_LaunchIDEXT.xy;
+    vec4 pos_q = imageLoad(curWorldPositionImage, ivec2(pixel_q));
+    //if(pos_q.w < 0.0f) return vec3(0.0f);
+    //if(dot(pos_q.xyz - r.z.x_s.xyz, r.z.n_s.xyz) < 0.0f) return vec3(0.0f);
+    vec3 norm_q = imageLoad(curNormalImage, ivec2(pixel_q)).xyz;
+    vec4 albedo = imageLoad(curAlbedoImage, ivec2(pixel_q));
+    
+    vec3 Li = r.z.Lo.rgb * r.W;
+    vec3 fr = albedo.rgb / M_PI;
+    float cosTheta = max(dot(normalize(r.z.x_s.xyz - pos_q.xyz), norm_q), 0.0f);
     return Li * fr * cosTheta;
+}
+
+vec3 calcDirectLighting()
+{
+    uvec2 pixel_q = gl_LaunchIDEXT.xy;
+    vec4 pos_q = imageLoad(curWorldPositionImage, ivec2(pixel_q));
+    //if(pos_q.w < 0.0f) return vec3(0.0f);
+    
+    vec3 norm_q = imageLoad(curNormalImage, ivec2(pixel_q)).xyz;
+    vec4 albedo = imageLoad(curAlbedoImage, ivec2(pixel_q));
+    
+    vec3 L_dir = vec3(0.0);
+    vec3 wi = normalize(-directionalLight.direction.xyz); // 指向光源的方向
+
+    uint rayFlags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT;
+    hitValue.dis = 1.0f;
+    // 逻辑：向着平行光方向追踪 10000 距离，看是否有遮挡
+    traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, pos_q.xyz, 0.001, wi, 10000.0, 0);
+
+    // hitValue.dis < 0 表示未击中任何物体（路径畅通）
+    if(hitValue.dis < 0.0f) {
+        vec3 brdf = albedo.rgb / M_PI; 
+        L_dir = directionalLight.emission.xyz * brdf * max(dot(wi, norm_q), 0.0f);
+    }
+    return L_dir;
 }
 
 void main() {
@@ -164,6 +203,6 @@ void main() {
     }
     
     spatialReservoirBufferOut.data[idx_q] = R_s;
-    vec3 color = calcFinalLighting(R_s);
+    vec3 color = calcDirectLighting() + calcIndirectLighting(R_s);
     imageStore(image, ivec2(pixel_q), vec4(color, 1.0f));
 }

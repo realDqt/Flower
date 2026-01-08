@@ -15,7 +15,6 @@ struct Sample
     glm::vec4 x_s;       // Offset 32
     glm::vec4 n_s;       // Offset 48
     glm::vec4 Lo;        // Offset 64 (w分量闲置，或者存Random?)
-    glm::vec4 baseColor_v;
     
     uint32_t Random;     // Offset 96 (紧跟在 Lo 的 16字节之后)
     uint32_t _pad[3];    // Offset 100-112 (手动填充到 16 字节对齐)

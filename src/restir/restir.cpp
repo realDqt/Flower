@@ -10,6 +10,8 @@ public:
 	StorageImage prevNormalImage;
 	StorageImage curDepthImage;
 	StorageImage curNormalImage;
+	StorageImage curWorldPositionImage;
+	StorageImage curAlbedoImage;
 
 	vks::Buffer vertexBuffer;
 	vks::Buffer indexBuffer;
@@ -100,6 +102,8 @@ public:
 			deleteRestirStorageImage(prevNormalImage);
 			deleteRestirStorageImage(curDepthImage);
 			deleteRestirStorageImage(curNormalImage);
+			deleteRestirStorageImage(curWorldPositionImage);
+			deleteRestirStorageImage(curAlbedoImage);
 			
 			deleteAccelerationStructure(bottomLevelAS);
 			deleteAccelerationStructure(topLevelAS);
@@ -586,7 +590,11 @@ public:
 			// Binding 7: Depth Image
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 7),
 			// Binding 8: Normal Image
-			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 8)
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 8),
+			// Binding 9: World Position Image
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 9),
+			// Binding 10: Albedo Image
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 10)
 		};
 
 		// Unbound set
@@ -599,6 +607,8 @@ public:
 			0,
 			0,
 			VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT,
+			0,
+			0,
 			0,
 			0,
 			0
@@ -690,12 +700,21 @@ public:
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 6),
 			// Binding 7: Ray tracing result image
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 7),
+			// Binding 8: Cur World Position Image
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 8),
+			// Binding 9: Cur Albedo Image
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 9),
+			// Binding 10: Light Storage Buffer
+			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 10),
 		};
 
 		// Unbound set
 		VkDescriptorSetLayoutBindingFlagsCreateInfoEXT setLayoutBindingFlags{};
 		setLayoutBindingFlags.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT;
 		std::vector<VkDescriptorBindingFlagsEXT> descriptorBindingFlags = {
+			0,
+			0,
+			0,
 			0,
 			0,
 			0,
@@ -777,23 +796,19 @@ public:
 		std::vector<VkDescriptorPoolSize> poolSizes = {
 			// ------------------------initial sampling------------------------------
 			{ VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxConcurrentFrames },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames * 5 },
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames * 3},
 			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(scene.textures.size()) * maxConcurrentFrames },
-				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
-				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
-				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
 			// --------------------------temporal reuse--------------------------------
 			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames * 3 },
 			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames * 4},
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
 			// --------------------------Spatial reuse--------------------------------
 			{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxConcurrentFrames},
-				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames * 3 },
-				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames * 3},
-				{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames * 4 },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames * 5},
+				{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames},
 		};
 		//std::cout << "total texture = " << scene.textures.size() << std::endl; // 49
 		// initial sample pass
@@ -839,6 +854,8 @@ public:
 			VkDescriptorImageInfo storageImageDescriptor{ VK_NULL_HANDLE, storageImage.view, VK_IMAGE_LAYOUT_GENERAL };
 			VkDescriptorImageInfo curDepthImageDescriptor{ VK_NULL_HANDLE, curDepthImage.view, VK_IMAGE_LAYOUT_GENERAL };
 			VkDescriptorImageInfo curNormalImageDescriptor{ VK_NULL_HANDLE, curNormalImage.view, VK_IMAGE_LAYOUT_GENERAL };
+			VkDescriptorImageInfo curWorldPositionImageDescriptor{ VK_NULL_HANDLE, curWorldPositionImage.view, VK_IMAGE_LAYOUT_GENERAL };
+			VkDescriptorImageInfo curAlbedoImageDescriptor{ VK_NULL_HANDLE, curAlbedoImage.view, VK_IMAGE_LAYOUT_GENERAL };
 
 			std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
 				// Binding 0: Top level acceleration structure
@@ -856,7 +873,11 @@ public:
 				// Binding 7: Cur Depth Image
 				vks::initializers::writeDescriptorSet(initialSampleRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7, &curDepthImageDescriptor),
 				// Binding 8: Cur Normal Image
-				vks::initializers::writeDescriptorSet(initialSampleRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8, &curNormalImageDescriptor)
+				vks::initializers::writeDescriptorSet(initialSampleRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8, &curNormalImageDescriptor),
+				// Binding 9: Cur World Position Image
+				vks::initializers::writeDescriptorSet(initialSampleRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 9, &curWorldPositionImageDescriptor),
+				// Binding 10: Cur Albedo Image
+				vks::initializers::writeDescriptorSet(initialSampleRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 10, &curAlbedoImageDescriptor)
 			};
 
 			// Image descriptors for the variable no. of images of the glTF model
@@ -905,6 +926,8 @@ public:
 			
 			VkDescriptorImageInfo curDepthImageDescriptor{ VK_NULL_HANDLE, curDepthImage.view, VK_IMAGE_LAYOUT_GENERAL };
 			VkDescriptorImageInfo curNormalImageDescriptor{ VK_NULL_HANDLE, curNormalImage.view, VK_IMAGE_LAYOUT_GENERAL };
+			VkDescriptorImageInfo curWorldPositionImageDescriptor{ VK_NULL_HANDLE, curWorldPositionImage.view, VK_IMAGE_LAYOUT_GENERAL };
+			VkDescriptorImageInfo curAlbedoImageDescriptor{ VK_NULL_HANDLE, curAlbedoImage.view, VK_IMAGE_LAYOUT_GENERAL };
 			VkDescriptorImageInfo storageImageDescriptor{ VK_NULL_HANDLE, storageImage.view, VK_IMAGE_LAYOUT_GENERAL };
 			
 			std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
@@ -918,6 +941,12 @@ public:
 				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 6, &frameDataUniformBuffers[i].descriptor),
 				// Binding 7: Ray tracing result image
 				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7, &storageImageDescriptor),
+				// Binding 8: Cur World Position Image
+				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8, &curWorldPositionImageDescriptor),
+				// Binding 9: Cur Albedo Image
+				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 9, &curAlbedoImageDescriptor),
+				// Binding 10: Light Storage Image
+				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10, &lightBuffer.descriptor),
 			};
 
 			// TODO: Ping Pong Update
@@ -1146,6 +1175,8 @@ public:
 		createRestirStorageImage(prevNormalImage, VK_FORMAT_R32G32B32A32_SFLOAT, { width, height, 1 });
 		createRestirStorageImage(curDepthImage, VK_FORMAT_R32_SFLOAT, { width, height, 1 });
 		createRestirStorageImage(curNormalImage, VK_FORMAT_R32G32B32A32_SFLOAT, { width, height, 1 });
+		createRestirStorageImage(curWorldPositionImage, VK_FORMAT_R32G32B32A32_SFLOAT, { width, height, 1 });
+		createRestirStorageImage(curAlbedoImage, VK_FORMAT_R8G8B8A8_SRGB, { width, height, 1 });
 		
 		createUniformBuffer();
 		createLightBuffer();

@@ -29,6 +29,8 @@ layout(binding = 6, set = 0) buffer InitialSampleBuffer{
 
 layout(binding = 7, set = 0) uniform image2D curDepthImage;  // 当前帧深度图
 layout(binding = 8, set = 0) uniform image2D curNormalImage; // 当前帧法向量
+layout(binding = 9, set = 0) uniform image2D curWorldPositionImage;  
+layout(binding = 10, set = 0) uniform image2D curAlbedoImage; 
 
 layout(location = 0) rayPayloadEXT RayPayload hitValue;
 
@@ -165,16 +167,17 @@ void initialSample(inout uint seed)
     // 1. calc x_v and n_v
     Ray ray = getRayFromCamera(0.001, 10000.0, seed, true);
     traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
-    if(hitValue.dis < 0.0f) return; // 未命中则提前返回
     uint idx = getCoord1D(uvec2(gl_LaunchIDEXT.xy));
+    bool hitAnything = hitValue.dis > 0.0f ? true : false;
     initialSampleBuffer.data[idx].x_v.xyz = hitValue.worldPos;
     initialSampleBuffer.data[idx].n_v.xyz = hitValue.worldNormal;
-    initialSampleBuffer.data[idx].baseColor_v = hitValue.baseColor; // for final lighting
     
     float cosTheta =  max(dot(ray.direction, cam.forward.xyz), 0.0f);
     float zVal = calcNDCZ(hitValue.dis * cosTheta, cam.zNear, cam.zFar);
     imageStore(curDepthImage, ivec2(gl_LaunchIDEXT.xy), vec4(zVal, 0.0f, 0.0f, 0.0f));
     imageStore(curNormalImage, ivec2(gl_LaunchIDEXT.xy), vec4(encodeNormal(hitValue.worldNormal), 0.0f));
+    imageStore(curWorldPositionImage, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue.worldPos, hitAnything ? 1.0f : -1.0f));
+    imageStore(curAlbedoImage, ivec2(gl_LaunchIDEXT.xy), hitAnything ? hitValue.baseColor : vec4(0.0f, 0.0f, 0.0f, 1.0f));
     // debug
     //imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(zVal, zVal, zVal, 1.f));
 
