@@ -11,18 +11,19 @@ A hardware-accelerated ray tracing engine using Vulkan
 - Multiple Importance Sampling
 - Lambertian Material
 - Mirror Material
+- ReSTIR GI
 
 
 
 Path Tracing(1spp):
 
-![CornellBox1SPP128Bounce](./demos/CornellBox1SPP128Bounce.png)
+![CornellBoxPT1SPP128Bounce](./demos/CornellBoxPT1SPP128Bounce.png)
 
 
 
 Path Tracing(1spp):
 
-![CornellBoxSpecular](./demos/CornellBoxSpecular.png)
+![CornellBoxSpecularPT1SPP](./demos/CornellBoxSpecularPT1SPP.png)
 
 
 
@@ -42,4 +43,4 @@ ReSTIR GI:
 
 Path Tracing(1024spp):
 
-![Sponza1024Spp.png](./demos/Sponza1024Spp.png)
+![SponzaPT1024SPP.png](./demos/SponzaPT1024SPP.png)
