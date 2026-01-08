@@ -15,19 +15,19 @@ A hardware-accelerated ray tracing engine using Vulkan
 
 
 
-Path Tracing(1spp):
+Path Tracing(1 SPP):
 
 ![CornellBoxPT1SPP128Bounce](./demos/CornellBoxPT1SPP128Bounce.png)
 
 
 
-Path Tracing(1spp):
+Path Tracing(1 SPP):
 
 ![CornellBoxSpecularPT1SPP](./demos/CornellBoxSpecularPT1SPP.png)
 
 
 
-Path Tracing(1SPP):
+Path Tracing(1 SPP):
 
 ![SponzaPT1SPP.png](./demos/SponzaPT1SPP.png)
 
@@ -41,6 +41,6 @@ ReSTIR GI:
 
 
 
-Path Tracing(1024spp):
+Path Tracing(1024 SPP):
 
-![SponzaPT1024SPP.png](./demos/SponzaPT1024SPP.png)
+![SponzaPT1024Spp.png](./demos/SponzaPT1024Spp.png)
