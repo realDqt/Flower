@@ -52,7 +52,7 @@ vec3 getWorldPos(uvec2 pixel_q)
 
 uint getSeed()
 {
-    return tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, frameData.frame);
+    return tea(gl_LaunchIDEXT.y * WIDTH + gl_LaunchIDEXT.x, frameData.frame);
 }
 
 bool isGeometricSimilar(ivec2 pixel_q, ivec2 pixel_r)

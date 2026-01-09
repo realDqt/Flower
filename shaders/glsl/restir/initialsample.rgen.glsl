@@ -37,7 +37,7 @@ layout(location = 0) rayPayloadEXT RayPayload hitValue;
 
 uint getSeed()
 {
-    return tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, cam.frame);
+    return tea(gl_LaunchIDEXT.y * WIDTH + gl_LaunchIDEXT.x, cam.frame);
 }
 
 // 相机射线生成 (含抗锯齿抖动)
