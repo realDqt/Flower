@@ -30,6 +30,7 @@ public:
 	struct CameraProperties {
 		glm::mat4 viewInverse;
 		glm::mat4 projInverse;
+		glm::mat4 viewProj;
 		glm::vec4 forward;
 		uint32_t frame{ 0 };
 		float zNear = Z_NEAR;
@@ -930,9 +931,16 @@ public:
 			VkDescriptorImageInfo curAlbedoImageDescriptor{ VK_NULL_HANDLE, curAlbedoImage.view, VK_IMAGE_LAYOUT_GENERAL };
 			VkDescriptorImageInfo storageImageDescriptor{ VK_NULL_HANDLE, storageImage.view, VK_IMAGE_LAYOUT_GENERAL };
 			
+			// 修复：初始化时设置 binding 1, 2, 3（reservoir buffers），使用初始 pingPongIdx = 0
 			std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
 				// Binding 0: Top level acceleration structure
 				accelerationStructureWrite,
+				// Binding 1: Temporal Reservoir Buffer Out (从 temporal reuse 输出)
+				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, &temporalSampleBuffer[1 - pingPongIdx].descriptor),
+				// Binding 2: Spatial Reservoir Buffer In (ping-pong input)
+				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &spatialSampleBuffer[pingPongIdx].descriptor),
+				// Binding 3: Spatial Reservoir Buffer Out (ping-pong output)
+				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &spatialSampleBuffer[1 - pingPongIdx].descriptor),
 				// Binding 4: Cur Depth Image
 				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4, &curDepthImageDescriptor),
 				// Binding 5: Cur Normal Image
@@ -945,11 +953,10 @@ public:
 				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8, &curWorldPositionImageDescriptor),
 				// Binding 9: Cur Albedo Image
 				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 9, &curAlbedoImageDescriptor),
-				// Binding 10: Light Storage Image
+				// Binding 10: Light Storage Buffer
 				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10, &lightBuffer.descriptor),
 			};
 
-			// TODO: Ping Pong Update
 			vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, VK_NULL_HANDLE);
 		}
 	}
@@ -991,8 +998,8 @@ public:
 
 	void createLightBuffer()
 	{
-		directionalLight.direction = glm::vec3(0.0f, 1.0f, 0.0f);
-		directionalLight.emission = 8.0f * glm::vec3(0.747f+0.058f, 0.747f+0.258f, 0.747f) + 15.6f * glm::vec3(0.740f+0.287f,0.740f+0.160f,0.740f) + 18.4f * glm::vec3(0.737f+0.642f,0.737f+0.159f,0.737f); // copy from cornell
+		directionalLight.direction = glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
+		directionalLight.emission = 8.0f * glm::vec4(0.747f+0.058f, 0.747f+0.258f, 0.747f, 0.0f) + 15.6f * glm::vec4(0.740f+0.287f,0.740f+0.160f,0.740f, 0.0f) + 18.4f * glm::vec4(0.737f+0.642f,0.737f+0.159f,0.737f, 0.0f); // copy from cornell
 
 		vks::Buffer stagingBuffer;
 
@@ -1041,15 +1048,17 @@ public:
 		for (auto i = 0; i < maxConcurrentFrames; i++) {
 			VkDescriptorSetAllocateInfo allocInfo = vks::initializers::descriptorSetAllocateInfo(descriptorPool, &temporalReuseCompute.descriptorSetLayout, 1);
 			VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &allocInfo, &temporalReuseCompute.descriptorSets[i]));
+			// 修复：初始化时设置 binding 1 和 2（temporal reservoir buffers），使用初始 pingPongIdx = 0
 			std::vector<VkWriteDescriptorSet> computeWriteDescriptorSets = {
 				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 0, &initialSampleBuffer.descriptor),
+				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, &temporalSampleBuffer[pingPongIdx].descriptor),
+				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &temporalSampleBuffer[1 - pingPongIdx].descriptor),
 				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3, &curDepthImageDescriptor),
 				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4, &curNormalImageDescriptor),
 				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 5, &frameDataUniformBuffers[i].descriptor),
 				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 6, &prevDepthImageDescriptor),
 				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7, &prevNormalImageDescriptor),
 			};
-			// TODO: ping pong update temporal buffer
 			vkUpdateDescriptorSets(device, static_cast<uint32_t>(computeWriteDescriptorSets.size()), computeWriteDescriptorSets.data(), 0, nullptr);
 		}
 
@@ -1118,6 +1127,7 @@ public:
 	{
 		cameraProperties.projInverse = glm::inverse(camera.matrices.perspective);
 		cameraProperties.viewInverse = glm::inverse(camera.matrices.view);
+		cameraProperties.viewProj = camera.matrices.perspective * camera.matrices.view;
 		cameraProperties.forward = glm::vec4(camera.getForward(), 0.0f);
 		//std::cout << cameraProperties.forward.x << " " << cameraProperties.forward.y << " " << cameraProperties.forward.z << std::endl;
 		// This value is used to accumulate multiple frames into the finale picture
@@ -1222,26 +1232,43 @@ public:
 
 
 		// ray tracing shader与compute shader同步
+		// 修复：添加对 initialSampleBuffer 和当前帧 G-Buffer 图像的显式同步
 		VkMemoryBarrier bufferBarrier = {};
 		bufferBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
 		bufferBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT; 
 		bufferBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;  
 		
-		VkImageMemoryBarrier depthBarrier = {};
-		depthBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		depthBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-		depthBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-		depthBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-		depthBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-		depthBarrier.image = prevDepthImage.image;
-		depthBarrier.subresourceRange = subresourceRange;
-		depthBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		depthBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		// 同步 prevDepthImage 和 prevNormalImage（temporal reuse 会读取）
+		VkImageMemoryBarrier prevDepthBarrier = {};
+		prevDepthBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		prevDepthBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+		prevDepthBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		prevDepthBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+		prevDepthBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+		prevDepthBarrier.image = prevDepthImage.image;
+		prevDepthBarrier.subresourceRange = subresourceRange;
+		prevDepthBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		prevDepthBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 
-		VkImageMemoryBarrier normalBarrier = depthBarrier;
-		normalBarrier.image = prevNormalImage.image;
+		VkImageMemoryBarrier prevNormalBarrier = prevDepthBarrier;
+		prevNormalBarrier.image = prevNormalImage.image;
 
-		VkImageMemoryBarrier imageBarriers[] = { depthBarrier, normalBarrier };
+		// 同步当前帧 G-Buffer 图像（temporal reuse 会读取）
+		VkImageMemoryBarrier curDepthBarrier = {};
+		curDepthBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		curDepthBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+		curDepthBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		curDepthBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+		curDepthBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+		curDepthBarrier.image = curDepthImage.image;
+		curDepthBarrier.subresourceRange = subresourceRange;
+		curDepthBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		curDepthBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+		VkImageMemoryBarrier curNormalBarrier = curDepthBarrier;
+		curNormalBarrier.image = curNormalImage.image;
+
+		VkImageMemoryBarrier imageBarriers[] = { prevDepthBarrier, prevNormalBarrier, curDepthBarrier, curNormalBarrier };
 
 		vkCmdPipelineBarrier(
 			cmdBuffer,
@@ -1250,7 +1277,7 @@ public:
 			0,                                            
 			1, &bufferBarrier,                            
 			0, nullptr,
-			2, imageBarriers                              
+			4, imageBarriers                              
 		);
 		
 		// -----------------------------temporal reuse---------------------------------
@@ -1290,8 +1317,34 @@ public:
 	      width,
 	      height,
 	      1);
+
+		// Copy spatialResueReservoirBuffer[1 - pingPongIdx] -> temporalReuseReservoirBuffer[pingPongIdx]
+		VkMemoryBarrier spatialToCopyBarrier = {};
+		spatialToCopyBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+		spatialToCopyBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+		spatialToCopyBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+		vkCmdPipelineBarrier(cmdBuffer,
+			VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			0, 1, &spatialToCopyBarrier, 0, nullptr, 0, nullptr);
 		
+		VkBufferCopy bufferCopyRegion = {};
+		bufferCopyRegion.size = width * height * sizeof(Reservoir);
+		vkCmdCopyBuffer(cmdBuffer, 
+			spatialSampleBuffer[pingPongIdx].buffer, // Src: Spatial Output
+			temporalSampleBuffer[1 - pingPongIdx].buffer,    // Dst: Next Frame's Temporal Input
+			1, &bufferCopyRegion);
 		
+		VkMemoryBarrier copyToNextFrameBarrier = {};
+		copyToNextFrameBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+		copyToNextFrameBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		copyToNextFrameBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+		vkCmdPipelineBarrier(cmdBuffer,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+			0, 1, &copyToNextFrameBarrier, 0, nullptr, 0, nullptr);
 		
 		/*
 			Copy ray tracing output to swap chain image
@@ -1312,13 +1365,13 @@ public:
 			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 			subresourceRange);
 
-		VkImageCopy copyRegion{};
-		copyRegion.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
-		copyRegion.srcOffset = { 0, 0, 0 };
-		copyRegion.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
-		copyRegion.dstOffset = { 0, 0, 0 };
-		copyRegion.extent = { width, height, 1 };
-		vkCmdCopyImage(cmdBuffer, storageImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, swapChain.images[currentImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+		VkImageCopy imageCopyRegion{};
+		imageCopyRegion.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+		imageCopyRegion.srcOffset = { 0, 0, 0 };
+		imageCopyRegion.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
+		imageCopyRegion.dstOffset = { 0, 0, 0 };
+		imageCopyRegion.extent = { width, height, 1 };
+		vkCmdCopyImage(cmdBuffer, storageImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, swapChain.images[currentImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageCopyRegion);
 
 		// Transition swap chain image back for presentation
 		vks::tools::setImageLayout(
@@ -1346,8 +1399,8 @@ public:
 		vks::tools::setImageLayout(cmdBuffer, prevDepthImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, subresourceRange);
 		vks::tools::setImageLayout(cmdBuffer, prevNormalImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, subresourceRange);
 
-		vkCmdCopyImage(cmdBuffer, curDepthImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, prevDepthImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
-		vkCmdCopyImage(cmdBuffer, curNormalImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, prevNormalImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+		vkCmdCopyImage(cmdBuffer, curDepthImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, prevDepthImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageCopyRegion);
+		vkCmdCopyImage(cmdBuffer, curNormalImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, prevNormalImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageCopyRegion);
 		
 		vks::tools::setImageLayout(cmdBuffer, curDepthImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, subresourceRange);
 		vks::tools::setImageLayout(cmdBuffer, curNormalImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, subresourceRange);

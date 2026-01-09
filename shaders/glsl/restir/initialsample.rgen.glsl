@@ -12,6 +12,7 @@ layout(binding = 2, set = 0) uniform CameraProperties
 {
     mat4 viewInverse;
     mat4 projInverse;
+    mat4 viewProj;
     vec4 forward;
     uint frame;
     float zNear;
@@ -19,8 +20,8 @@ layout(binding = 2, set = 0) uniform CameraProperties
 } cam;
 
 layout(binding = 3, set = 0) buffer DirectionalLight{
-    vec3 direction; // 平行光方向 (从光源指向场景)
-    vec3 emission;  // 强度/颜色
+    vec4 direction; // 平行光方向 (从光源指向场景)
+    vec4 emission;  // 强度/颜色
 } directionalLight;
 
 layout(binding = 6, set = 0) buffer InitialSampleBuffer{
@@ -71,7 +72,7 @@ vec3 calcDirectionalLight(vec3 pos, vec3 wo, vec3 normal, vec4 baseColor)
     uint rayFlags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT;
     
     // 逻辑：向着平行光方向追踪 10000 距离，看是否有遮挡
-    traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, pos, 0.001, wi, 10000.0, 0);
+    traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, pos, T_MIN, wi, T_MAX, 0);
 
     // hitValue.dis < 0 表示未击中任何物体（路径畅通）
     if(hitValue.dis < 0.0f) {
@@ -91,8 +92,8 @@ vec3 calcNBounceLighting(vec3 worldPos, vec3 worldNormal, vec4 baseColor, vec3 w
     Ray ray;
     ray.origin = worldPos;
     ray.direction = sampleDir;
-    ray.tmin = 0.001;
-    ray.tmax = 10000.0;
+    ray.tmin = T_MIN;
+    ray.tmax = T_MAX;
     vec3 brdf = evalDiffuseBRDF(sampleDir, wo, worldNormal, baseColor);
     vec3 throughput = (brdf * dot(sampleDir, worldNormal)) / pdf;
 
@@ -129,7 +130,7 @@ vec3 calcNBounceLighting(vec3 worldPos, vec3 worldNormal, vec4 baseColor, vec3 w
 
 vec3 pathTracing(int maxBounce, inout uint seed)
 {
-    Ray ray = getRayFromCamera(0.001, 10000.0, seed, true);
+    Ray ray = getRayFromCamera(T_MIN, T_MAX, seed, true);
     traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
     if(hitValue.dis < 0.0f) {
         return vec3(0.0);
@@ -139,11 +140,11 @@ vec3 pathTracing(int maxBounce, inout uint seed)
 
 vec3 getSceneBaseColor(inout uint seed)
 {
-    Ray ray = getRayFromCamera(0.001, 512, seed, true);
+    Ray ray = getRayFromCamera(T_MIN, T_MAX, seed, true);
     traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
     if(hitValue.dis > 0.0f){
-        //traceRayEXT(topLevelAS, gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, hitValue.worldPos, ray.tmin, -directionalLight.direction.xyz, ray.tmax, 0);
-        //if(hitValue.dis > 0.0f)hitValue.baseColor.rgb *= 0.7f;
+        traceRayEXT(topLevelAS, gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, hitValue.worldPos, ray.tmin, -directionalLight.direction.xyz, ray.tmax, 0);
+        if(hitValue.dis > 0.0f)hitValue.baseColor.rgb *= 0.7f;
         return hitValue.baseColor.rgb;
     }else{
         return vec3(0.0f);
@@ -162,24 +163,45 @@ void temporalAccumalation(vec3 finalColor)
     }
 }
 
+float worldPos2NDCZ(vec3 worldPos)
+{
+    vec4 clipPos = cam.viewProj * vec4(worldPos, 1.0f);
+    vec4 NDC = clipPos / clipPos.w;
+    return NDC.z;
+}
+
+void initByDefault(inout Sample z)
+{
+    z.x_v = vec4(vec3(0.0f), -1.0f);
+    z.n_v = vec4(0.0f);
+    z.x_s = vec4(vec3(0.0f), -1.0f);
+    z.n_s = vec4(0.0f);
+    z.Lo = vec4(0.0f);
+    z.Random = 0;
+}
+
 void initialSample(inout uint seed)
 {
-    // 1. calc x_v and n_v
-    Ray ray = getRayFromCamera(0.001, 10000.0, seed, true);
-    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
     uint idx = getCoord1D(uvec2(gl_LaunchIDEXT.xy));
-    bool hitAnything = hitValue.dis > 0.0f ? true : false;
-    initialSampleBuffer.data[idx].x_v.xyz = hitValue.worldPos;
+    initByDefault(initialSampleBuffer.data[idx]);
+    // 1. calc x_v and n_v
+    Ray ray = getRayFromCamera(T_MIN, T_MAX, seed, true);
+    traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
+    if(hitValue.dis < 0.0f) {
+        imageStore(curWorldPositionImage, ivec2(gl_LaunchIDEXT.xy), vec4(vec3(0.0f), -1.0f));
+        return;
+    }
+    initialSampleBuffer.data[idx].x_v = vec4(hitValue.worldPos, 1.0f);
     initialSampleBuffer.data[idx].n_v.xyz = hitValue.worldNormal;
     
     float cosTheta =  max(dot(ray.direction, cam.forward.xyz), 0.0f);
-    float zVal = calcNDCZ(hitValue.dis * cosTheta, cam.zNear, cam.zFar);
+    float zVal = worldPos2NDCZ(hitValue.worldPos);
     imageStore(curDepthImage, ivec2(gl_LaunchIDEXT.xy), vec4(zVal, 0.0f, 0.0f, 0.0f));
     imageStore(curNormalImage, ivec2(gl_LaunchIDEXT.xy), vec4(encodeNormal(hitValue.worldNormal), 0.0f));
-    imageStore(curWorldPositionImage, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue.worldPos, hitAnything ? 1.0f : -1.0f));
-    imageStore(curAlbedoImage, ivec2(gl_LaunchIDEXT.xy), hitAnything ? hitValue.baseColor : vec4(0.0f, 0.0f, 0.0f, 1.0f));
+    imageStore(curWorldPositionImage, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue.worldPos, 1.0f));
+    imageStore(curAlbedoImage, ivec2(gl_LaunchIDEXT.xy), hitValue.baseColor);
     // debug
-    //imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(zVal, zVal, zVal, 1.f));
+    //imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(getSceneBaseColor(seed), 1.0f));
 
     // 2. calc x_s and n_s
     vec3 sampleDir;
@@ -188,7 +210,7 @@ void initialSample(inout uint seed)
     ray.origin = hitValue.worldPos;
     ray.direction = sampleDir;
     traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
-    if(hitValue.dis < 0.0f) return; // 未命中则提前返回
+    if(hitValue.dis < 0.0f) return;
     initialSampleBuffer.data[idx].x_s.xyz = hitValue.worldPos;
     initialSampleBuffer.data[idx].n_s.xyz = hitValue.worldNormal;
 

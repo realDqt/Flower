@@ -33,8 +33,8 @@ layout(binding = 8, set = 0) uniform image2D curWorldPositionImage;
 layout(binding = 9, set = 0) uniform image2D curAlbedoImage;
 
 layout(binding = 10, set = 0) buffer DirectionalLight{
-    vec3 direction; // 平行光方向 (从光源指向场景)
-    vec3 emission;  // 强度/颜色
+    vec4 direction; // 平行光方向 (从光源指向场景)
+    vec4 emission;  // 强度/颜色
 } directionalLight;
 
 layout(location = 0) rayPayloadEXT RayPayload hitValue;
@@ -43,6 +43,11 @@ vec3 getWorldPos(vec2 uv, float depth) {
     vec4 ndc = vec4(uv * 2.0 - 1.0, depth, 1.0);
     vec4 worldPos = frameData.currentInvViewProj * ndc;
     return worldPos.xyz / worldPos.w;
+}
+
+vec3 getWorldPos(uvec2 pixel_q)
+{
+    return imageLoad(curWorldPositionImage, ivec2(pixel_q)).xyz;
 }
 
 uint getSeed()
@@ -88,16 +93,18 @@ float calcJacobian(vec3 pos_r, vec3 pos_n, vec3 pos_s, vec3 norm_s)
 
 bool isVisibleAB(vec3 pos_a, vec3 pos_b)
 {
+    float len = length(pos_b - pos_a);
     Ray ray;
     ray.origin = pos_a;
-    ray.direction = normalize(pos_b - pos_a);
+    ray.direction = (pos_b - pos_a) / len;
     ray.tmin = 0.001f;
-    ray.tmax = 10000.0f;
+    ray.tmax = len - 0.001f;
     uint rayFlags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT;
     hitValue.dis = 1.0f;
     traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
-    return hitValue.dis > 0.0f;
+    return hitValue.dis < 0.0f;
 }
+
 vec3 calcIndirectLighting(Reservoir r)
 {
     uvec2 pixel_q = gl_LaunchIDEXT.xy;
@@ -127,8 +134,7 @@ vec3 calcDirectLighting()
 
     uint rayFlags = gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsOpaqueEXT;
     hitValue.dis = 1.0f;
-    // 逻辑：向着平行光方向追踪 10000 距离，看是否有遮挡
-    traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, pos_q.xyz, 0.001, wi, 10000.0, 0);
+    traceRayEXT(topLevelAS, rayFlags, 0xff, 0, 0, 0, pos_q.xyz, T_MIN, wi, T_MAX, 0);
 
     // hitValue.dis < 0 表示未击中任何物体（路径畅通）
     if(hitValue.dis < 0.0f) {
@@ -149,7 +155,7 @@ void main() {
     vec2 uv_q = (vec2(pixel_q) + 0.5) / vec2(WIDTH, HEIGHT);
     float depth_q = imageLoad(curDepthImage, ivec2(pixel_q)).r;
     vec3 norm_q = decodeNormal(imageLoad(curNormalImage, ivec2(pixel_q)).xyz);
-    vec3 pos_q = getWorldPos(uv_q, depth_q);
+    vec3 pos_q = getWorldPos(pixel_q);
     
     Reservoir R_s = temporalReservoirBufferOut.data[idx_q];
 
@@ -175,7 +181,7 @@ void main() {
         vec2 uv_qn = (vec2(pixel_qn) + 0.5) / vec2(WIDTH, HEIGHT);
         float depth_qn = imageLoad(curDepthImage, ivec2(pixel_qn)).r;
         vec3 norm_qn = decodeNormal(imageLoad(curNormalImage, ivec2(pixel_qn)).xyz);
-        vec3 pos_qn = getWorldPos(uv_qn, depth_qn);
+        vec3 pos_qn = getWorldPos(pixel_qn);
         float jacobian = calcJacobian(pos_q, pos_qn, R_n.z.x_s.xyz, R_n.z.n_s.xyz);
         jacobian = clamp(jacobian, 0.1, 10.0);
         

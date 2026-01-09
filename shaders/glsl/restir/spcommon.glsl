@@ -6,6 +6,8 @@
 #define RUSSIAN_ROULETTE 0.8f
 #define WIDTH 1280
 #define HEIGHT 760
+#define T_MAX 64.0f
+#define T_MIN 0.001f
 
 struct RayPayload{
     vec3 worldNormal;

@@ -33,6 +33,7 @@ private:
 		if (flipY) {
 			translation.y *= -1.0f;
 		}
+		//std::cout << "flipY: " << flipY << std::endl; // 0
 		transM = glm::translate(glm::mat4(1.0f), translation);
 
 		if (type == CameraType::firstperson)

@@ -69,5 +69,5 @@ struct SpatialReuseRayTracing
 };
 
 constexpr float Z_NEAR = 0.1f;
-constexpr float Z_FAR = 512.0f;
+constexpr float Z_FAR = 64.0f;
 #endif

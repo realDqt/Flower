@@ -48,7 +48,7 @@ vec2 getPrevUV(vec2 uv)
 
 uint getSeed()
 {
-    return tea(gl_GlobalInvocationID.y * gl_GlobalInvocationID.x + gl_GlobalInvocationID.x, frameData.frame);
+    return tea(gl_GlobalInvocationID.y * WIDTH + gl_GlobalInvocationID.x, frameData.frame);
 }
 
 bool isValidReprojection(ivec2 prevSC)

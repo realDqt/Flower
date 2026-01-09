@@ -7,7 +7,7 @@
 
 struct DirectionalLight
 {
-    alignas(16)glm::vec3 direction;
-    alignas(16)glm::vec3 emission;
+    glm::vec4 direction;
+    glm::vec4 emission;
 };
 #endif
