@@ -195,6 +195,7 @@ void initialSample(inout uint seed)
     initialSampleBuffer.data[idx].n_v.xyz = hitValue.worldNormal;
     
     float cosTheta =  max(dot(ray.direction, cam.forward.xyz), 0.0f);
+    //float zVal = calcNDCZ(hitValue.dis * cosTheta, cam.zNear, cam.zFar);
     float zVal = worldPos2NDCZ(hitValue.worldPos);
     imageStore(curDepthImage, ivec2(gl_LaunchIDEXT.xy), vec4(zVal, 0.0f, 0.0f, 0.0f));
     imageStore(curNormalImage, ivec2(gl_LaunchIDEXT.xy), vec4(encodeNormal(hitValue.worldNormal), 0.0f));
