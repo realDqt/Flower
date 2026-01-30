@@ -83,6 +83,7 @@ set(EXAMPLES
      raytracingbasic
 	 pathtracing
 	 restir
+	 ddgi
 )
 
 buildExamples()

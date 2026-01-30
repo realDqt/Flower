@@ -66,7 +66,7 @@ public:
 
 	Sponza() : VulkanRaytracingSample()
 	{
-		title = "Restir GI";
+		title = "ReSTIR GI";
 		camera.type = Camera::CameraType::firstperson;
 		camera.rotationSpeed = 0.25f;
 		//camera.movementSpeed = 0.25f;
