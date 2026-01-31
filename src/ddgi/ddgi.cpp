@@ -5,10 +5,7 @@
  *
  * This code is licensed under the MIT license (MIT) (http://opensource.org/licenses/MIT)
  */
-
-#include "VulkanRaytracingSample.h"
-#define VK_GLTF_MATERIAL_IDS
-#include "VulkanglTFModel.h"
+#include "utils.hpp"
 
 class ClassRoom : public VulkanRaytracingSample
 {
@@ -780,6 +777,7 @@ public:
 			// If the camera's view has been updated we need to  reset the frame accumulation (which is used for transparent surfaces and anti-aliasing)
 			uniformData.frame = -1;
 		}
+		//printVec3(camera.position);
 		updateUniformBuffers();
 		buildCommandBuffer();
 		VulkanExampleBase::submitFrame();
