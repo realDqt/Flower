@@ -270,7 +270,7 @@ public:
 	}
 
 	/*
-		The top level acceleration structure contains the scene's object instances
+		The top level acceleration structure contains the scene's object instances++
 	*/
 	void createTopLevelAccelerationStructure()
 	{

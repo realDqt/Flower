@@ -40,8 +40,8 @@ void main()
 	// If the alpha value of the texture at the current UV coordinates is below a given threshold, we'll ignore this intersection
 	// That way ray traversal will be stopped and the miss shader will be invoked
 	if (color.a < 0.9) {
-		if(rnd(payloadSeed) > color.a) {
+		//if(rnd(payloadSeed) > color.a) {
 			ignoreIntersectionEXT;
-		}
+		//}
 	}
 }
