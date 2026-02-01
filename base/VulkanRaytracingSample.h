@@ -19,6 +19,22 @@ public:
 	VkStridedDeviceAddressRegionKHR stridedDeviceAddressRegion{};
 };
 
+// Holds information for a ray tracing acceleration structure
+struct AccelerationStructure {
+	VkAccelerationStructureKHR handle{ VK_NULL_HANDLE };
+	uint64_t deviceAddress{ 0 };
+	VkDeviceMemory memory{ VK_NULL_HANDLE };
+	VkBuffer buffer{ VK_NULL_HANDLE };
+};
+
+// Holds information for a storage image that the ray tracing shaders output to
+struct StorageImage {
+	VkDeviceMemory memory{ VK_NULL_HANDLE };
+	VkImage image{ VK_NULL_HANDLE };
+	VkImageView view{ VK_NULL_HANDLE };
+	VkFormat format;
+};
+
 // Base sample class with added features specific to hardware ray traced samples
 class VulkanRaytracingSample : public VulkanExampleBase
 {
@@ -55,22 +71,10 @@ public:
 		VkBuffer handle{ VK_NULL_HANDLE };
 		VkDeviceMemory memory{ VK_NULL_HANDLE };
 	};
-
-	// Holds information for a ray tracing acceleration structure
-	struct AccelerationStructure {
-		VkAccelerationStructureKHR handle{ VK_NULL_HANDLE };
-		uint64_t deviceAddress{ 0 };
-		VkDeviceMemory memory{ VK_NULL_HANDLE };
-		VkBuffer buffer{ VK_NULL_HANDLE };
-	};
+	
 
 	// Holds information for a storage image that the ray tracing shaders output to
-	struct StorageImage {
-		VkDeviceMemory memory{ VK_NULL_HANDLE };
-		VkImage image{ VK_NULL_HANDLE };
-		VkImageView view{ VK_NULL_HANDLE };
-		VkFormat format;
-	} storageImage;
+	StorageImage storageImage;
 	
 
 	// Set to true, to denote that the sample only uses ray queries (changes extension and render pass handling)

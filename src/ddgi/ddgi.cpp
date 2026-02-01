@@ -5,6 +5,7 @@
  *
  * This code is licensed under the MIT license (MIT) (http://opensource.org/licenses/MIT)
  */
+#pragma once
 #include "SceneShadingRayTracing.hpp"
 
 class ClassRoom : public VulkanRaytracingSample
@@ -22,7 +23,7 @@ public:
 
 	VkPhysicalDeviceDescriptorIndexingFeaturesEXT physicalDeviceDescriptorIndexingFeatures{};
 
-	SceneShadingRayTracing sceneShadingRayTracing{};
+	std::unique_ptr<SceneShadingRayTracing> sceneShadingRayTracing = nullptr;
 
 	ClassRoom() : VulkanRaytracingSample()
 	{
@@ -47,22 +48,13 @@ public:
 	~ClassRoom()
 	{
 		if (device) {
-			vkDestroyPipeline(device, sceneShadingRayTracing.pipeline, nullptr);
-			vkDestroyPipelineLayout(device, sceneShadingRayTracing.pipelineLayout, nullptr);
-			vkDestroyDescriptorSetLayout(device, sceneShadingRayTracing.descriptorSetLayout, nullptr);
 			deleteStorageImage();
 			deleteAccelerationStructure(bottomLevelAS);
 			deleteAccelerationStructure(topLevelAS);
 			vertexBuffer.destroy();
 			indexBuffer.destroy();
 			transformBuffer.destroy();
-			sceneShadingRayTracing.shaderBindingTables.raygen.destroy();
-			sceneShadingRayTracing.shaderBindingTables.miss.destroy();
-			sceneShadingRayTracing.shaderBindingTables.hit.destroy();
 			geometryNodesBuffer.destroy();
-			for (auto& buffer : sceneShadingRayTracing.uniformBuffers) {
-				buffer.destroy();
-			}
 		}
 	}
 
@@ -349,265 +341,35 @@ public:
 		deleteScratchBuffer(scratchBuffer);
 		instancesBuffer.destroy();
 	}
-
-	/*
-	Create the Shader Binding Tables that binds the programs and top-level acceleration structure
-
-	SBT Layout used in this sample:
-
-		/-----------\
-		| raygen    |
-		|-----------|
-		| miss + shadow     |
-		|-----------|
-		| hit + any |
-		\-----------/
-
-	*/
-	void createShaderBindingTables() {
-		const uint32_t handleSize = rayTracingPipelineProperties.shaderGroupHandleSize;
-		const uint32_t handleSizeAligned = vks::tools::alignedSize(rayTracingPipelineProperties.shaderGroupHandleSize, rayTracingPipelineProperties.shaderGroupHandleAlignment);
-		const uint32_t groupCount = static_cast<uint32_t>(sceneShadingRayTracing.shaderGroups.size());
-		const uint32_t sbtSize = groupCount * handleSizeAligned;
-
-		std::vector<uint8_t> shaderHandleStorage(sbtSize);
-		VK_CHECK_RESULT(vkGetRayTracingShaderGroupHandlesKHR(device, sceneShadingRayTracing.pipeline, 0, groupCount, sbtSize, shaderHandleStorage.data()));
-
-		createShaderBindingTable(sceneShadingRayTracing.shaderBindingTables.raygen, 1);
-		createShaderBindingTable(sceneShadingRayTracing.shaderBindingTables.miss, 2);
-		createShaderBindingTable(sceneShadingRayTracing.shaderBindingTables.hit, 1);
-
-		// Copy handles
-		memcpy(sceneShadingRayTracing.shaderBindingTables.raygen.mapped, shaderHandleStorage.data(), handleSize);
-		// We are using two miss shaders, so we need to get two handles for the miss shader binding table
-		memcpy(sceneShadingRayTracing.shaderBindingTables.miss.mapped, shaderHandleStorage.data() + handleSizeAligned, handleSize * 2);
-		memcpy(sceneShadingRayTracing.shaderBindingTables.hit.mapped, shaderHandleStorage.data() + handleSizeAligned * 3, handleSize);
-	}
-
-	/*
-		Create our ray tracing pipeline
-	*/
-	void createRayTracingPipeline()
-	{
-		const uint32_t imageCount = static_cast<uint32_t>(model.textures.size());
-
-		std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-			// Binding 0: Top level acceleration structure
-			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 0),
-			// Binding 1: Ray tracing result image
-			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 1),
-			// Binding 2: Uniform buffer
-			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR, 2),
-			// Binding 3: Texture image
-			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, 3),
-			// Binding 4: Geometry node information SSBO
-			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, 4),
-			// Binding 5: All images used by the glTF model
-			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR, 5, imageCount)
-		};
-
-		// Unbound set
-		VkDescriptorSetLayoutBindingFlagsCreateInfoEXT setLayoutBindingFlags{};
-		setLayoutBindingFlags.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT;
-		setLayoutBindingFlags.bindingCount = 6;
-		std::vector<VkDescriptorBindingFlagsEXT> descriptorBindingFlags = {
-			0,
-			0,
-			0,
-			0,
-			0,
-			VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT
-		};
-		setLayoutBindingFlags.pBindingFlags = descriptorBindingFlags.data();
-
-		VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
-		descriptorSetLayoutCI.pNext = &setLayoutBindingFlags;
-		VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCI, nullptr, &sceneShadingRayTracing.descriptorSetLayout));
-
-		VkPipelineLayoutCreateInfo pipelineLayoutCI = vks::initializers::pipelineLayoutCreateInfo(&sceneShadingRayTracing.descriptorSetLayout, 1);
-		VK_CHECK_RESULT(vkCreatePipelineLayout(device, &pipelineLayoutCI, nullptr, &sceneShadingRayTracing.pipelineLayout));
-
-		/*
-			Setup ray tracing shader groups
-		*/
-		std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-
-		// Ray generation group
-		{
-			shaderStages.push_back(loadShader(getShadersPath() + "ddgi/raygen.rgen.spv", VK_SHADER_STAGE_RAYGEN_BIT_KHR));
-			VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
-			shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-			shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-			shaderGroup.generalShader = static_cast<uint32_t>(shaderStages.size()) - 1;
-			shaderGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
-			shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
-			shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
-			sceneShadingRayTracing.shaderGroups.push_back(shaderGroup);
-		}
-
-		// Miss group
-		{
-			shaderStages.push_back(loadShader(getShadersPath() + "ddgi/miss.rmiss.spv", VK_SHADER_STAGE_MISS_BIT_KHR));
-			VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
-			shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-			shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-			shaderGroup.generalShader = static_cast<uint32_t>(shaderStages.size()) - 1;
-			shaderGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
-			shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
-			shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
-			sceneShadingRayTracing.shaderGroups.push_back(shaderGroup);
-			// Second shader for shadows
-			shaderStages.push_back(loadShader(getShadersPath() + "ddgi/shadow.rmiss.spv", VK_SHADER_STAGE_MISS_BIT_KHR));
-			shaderGroup.generalShader = static_cast<uint32_t>(shaderStages.size()) - 1;
-			sceneShadingRayTracing.shaderGroups.push_back(shaderGroup);
-		}
-
-		// Closest hit group for doing texture lookups
-		{
-			shaderStages.push_back(loadShader(getShadersPath() + "ddgi/closesthit.rchit.spv", VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR));
-			VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
-			shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-			shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
-			shaderGroup.generalShader = VK_SHADER_UNUSED_KHR;
-			shaderGroup.closestHitShader = static_cast<uint32_t>(shaderStages.size()) - 1;
-			shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
-			// This group also uses an anyhit shader for doing transparency (see anyhit.rahit for details)
-			shaderStages.push_back(loadShader(getShadersPath() + "ddgi/anyhit.rahit.spv", VK_SHADER_STAGE_ANY_HIT_BIT_KHR));
-			shaderGroup.anyHitShader = static_cast<uint32_t>(shaderStages.size()) - 1;
-			sceneShadingRayTracing.shaderGroups.push_back(shaderGroup);
-		}
-
-		/*
-			Create the ray tracing pipeline
-		*/
-		VkRayTracingPipelineCreateInfoKHR rayTracingPipelineCI{};
-		rayTracingPipelineCI.sType = VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR;
-		rayTracingPipelineCI.stageCount = static_cast<uint32_t>(shaderStages.size());
-		rayTracingPipelineCI.pStages = shaderStages.data();
-		rayTracingPipelineCI.groupCount = static_cast<uint32_t>(sceneShadingRayTracing.shaderGroups.size());
-		rayTracingPipelineCI.pGroups = sceneShadingRayTracing.shaderGroups.data();
-		rayTracingPipelineCI.maxPipelineRayRecursionDepth = 1;
-		rayTracingPipelineCI.layout = sceneShadingRayTracing.pipelineLayout;
-		VK_CHECK_RESULT(vkCreateRayTracingPipelinesKHR(device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &rayTracingPipelineCI, nullptr, &sceneShadingRayTracing.pipeline));
-	}
-
-	/*
-		Create the descriptor sets used for the ray tracing dispatch
-	*/
-	void createDescriptorSets()
-	{
-		uint32_t imageCount = static_cast<uint32_t>(model.textures.size());
-		std::vector<VkDescriptorPoolSize> poolSizes = {
-			{ VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxConcurrentFrames },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, maxConcurrentFrames },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<uint32_t>(model.textures.size()) * maxConcurrentFrames }
-		};
-		VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, maxConcurrentFrames);
-		VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolCreateInfo, nullptr, &descriptorPool));
-
-		VkDescriptorSetVariableDescriptorCountAllocateInfoEXT variableDescriptorCountAllocInfo{};
-		uint32_t variableDescCounts[] = { imageCount };
-		variableDescriptorCountAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT;
-		variableDescriptorCountAllocInfo.descriptorSetCount = 1;
-		variableDescriptorCountAllocInfo.pDescriptorCounts = variableDescCounts;
-
-		// Sets per frame, just like the buffers themselves
-		// Acceleration structure and images do not need to be duplicated per frame, we use the same for each descriptor to keep things simple
-		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = vks::initializers::descriptorSetAllocateInfo(descriptorPool, &sceneShadingRayTracing.descriptorSetLayout, 1);
-		// Required for the variable no. of images used by the glTF model
-		descriptorSetAllocateInfo.pNext = &variableDescriptorCountAllocInfo;
-		for (auto i = 0; i < maxConcurrentFrames; i++) {
-			VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &descriptorSetAllocateInfo, &sceneShadingRayTracing.descriptorSets[i]));
-
-			VkWriteDescriptorSetAccelerationStructureKHR descriptorAccelerationStructureInfo = vks::initializers::writeDescriptorSetAccelerationStructureKHR();
-			descriptorAccelerationStructureInfo.accelerationStructureCount = 1;
-			descriptorAccelerationStructureInfo.pAccelerationStructures = &topLevelAS.handle;
-
-			VkWriteDescriptorSet accelerationStructureWrite{};
-			accelerationStructureWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			// The specialized acceleration structure descriptor has to be chained
-			accelerationStructureWrite.pNext = &descriptorAccelerationStructureInfo;
-			accelerationStructureWrite.dstSet = sceneShadingRayTracing.descriptorSets[i];
-			accelerationStructureWrite.dstBinding = 0;
-			accelerationStructureWrite.descriptorCount = 1;
-			accelerationStructureWrite.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-
-			VkDescriptorImageInfo storageImageDescriptor{ VK_NULL_HANDLE, storageImage.view, VK_IMAGE_LAYOUT_GENERAL };
-
-			std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
-				// Binding 0: Top level acceleration structure
-				accelerationStructureWrite,
-				// Binding 1: Ray tracing result image
-				vks::initializers::writeDescriptorSet(sceneShadingRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &storageImageDescriptor),
-				// Binding 2: Uniform data
-				vks::initializers::writeDescriptorSet(sceneShadingRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2, &sceneShadingRayTracing.uniformBuffers[i].descriptor),
-				// Binding 4: Geometry node information SSBO
-				vks::initializers::writeDescriptorSet(sceneShadingRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &geometryNodesBuffer.descriptor),
-			};
-
-			// Image descriptors for the variable no. of images of the glTF model
-			std::vector<VkDescriptorImageInfo> textureDescriptors{};
-			for (auto& texture : model.textures) {
-				VkDescriptorImageInfo descriptor{};
-				descriptor.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-				descriptor.sampler = texture.sampler;
-				descriptor.imageView = texture.view;
-				textureDescriptors.push_back(descriptor);
-			}
-
-			VkWriteDescriptorSet writeDescriptorImgArray{};
-			writeDescriptorImgArray.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			writeDescriptorImgArray.dstBinding = 5;
-			writeDescriptorImgArray.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			writeDescriptorImgArray.descriptorCount = imageCount;
-			writeDescriptorImgArray.dstSet = sceneShadingRayTracing.descriptorSets[i];
-			writeDescriptorImgArray.pImageInfo = textureDescriptors.data();
-			writeDescriptorSets.push_back(writeDescriptorImgArray);
-
-			vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, VK_NULL_HANDLE);
-		}
-	}
-
-	/*
-		Create the uniform buffer used to pass matrices to the ray tracing ray generation shader
-	*/
-	void createUniformBuffer()
-	{
-		for (auto& buffer : sceneShadingRayTracing.uniformBuffers) {
-			VK_CHECK_RESULT(vulkanDevice->createBuffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &buffer, sizeof(SceneShadingRayTracing::UniformData), &sceneShadingRayTracing.uniformData));
-			VK_CHECK_RESULT(buffer.map());
-		}
-	}
-
+	
 	/*
 		If the window has been resized, we need to recreate the storage image and it's descriptor
 	*/
 	void handleResize()
 	{
+		/*
 		// Recreate image
 		createStorageImage(swapChain.colorFormat, { width, height, 1 });
 		// Update descriptors
 		VkDescriptorImageInfo storageImageDescriptor{ VK_NULL_HANDLE, storageImage.view, VK_IMAGE_LAYOUT_GENERAL };
 		for (auto i = 0; i < maxConcurrentFrames; i++) {
-			VkWriteDescriptorSet resultImageWrite = vks::initializers::writeDescriptorSet(sceneShadingRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &storageImageDescriptor);
+			VkWriteDescriptorSet resultImageWrite = vks::initializers::writeDescriptorSet(sceneShadingRayTracing->descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &storageImageDescriptor);
 			vkUpdateDescriptorSets(device, 1, &resultImageWrite, 0, VK_NULL_HANDLE);
 		}
 		resized = false;
+		*/
 	}
 
 	void updateUniformBuffers()
 	{
-		sceneShadingRayTracing.uniformData.projInverse = glm::inverse(camera.matrices.perspective);
-		sceneShadingRayTracing.uniformData.viewInverse = glm::inverse(camera.matrices.view);
+		sceneShadingRayTracing->uniformData.projInverse = glm::inverse(camera.matrices.perspective);
+		sceneShadingRayTracing->uniformData.viewInverse = glm::inverse(camera.matrices.view);
 		// This value is used to accumulate multiple frames into the finale picture
 		// It's required as ray tracing needs to do multiple passes for transparency
 		// In this sample we use noise offset by this frame index to shoot rays for transparency into different directions
 		// Once enough frames with random ray directions have been accumulated, it looks like proper transparency
-		sceneShadingRayTracing.uniformData.frame++;
-		memcpy(sceneShadingRayTracing.uniformBuffers[currentBuffer].mapped, &sceneShadingRayTracing.uniformData, sizeof(SceneShadingRayTracing::UniformData));
+		sceneShadingRayTracing->uniformData.frame++;
+		memcpy(sceneShadingRayTracing->uniformBuffers[currentBuffer].mapped, &sceneShadingRayTracing->uniformData, sizeof(SceneShadingRayTracing::UniformData));
 	}
 
 	void getEnabledFeatures()
@@ -650,12 +412,10 @@ public:
 		// Create the acceleration structures used to render the ray traced scene
 		createBottomLevelAccelerationStructure();
 		createTopLevelAccelerationStructure();
-
 		createStorageImage(swapChain.colorFormat, { width, height, 1 });
-		createUniformBuffer();
-		createRayTracingPipeline();
-		createShaderBindingTables();
-		createDescriptorSets();
+
+		sceneShadingRayTracing = std::make_unique<SceneShadingRayTracing>(device, &rayTracingPipelineProperties, vulkanDevice, &model, descriptorPool, &bottomLevelAS, &topLevelAS, &storageImage, &geometryNodesBuffer);
+		sceneShadingRayTracing->prepare();
 		prepared = true;
 	}
 
@@ -674,23 +434,7 @@ public:
 
 		VK_CHECK_RESULT(vkBeginCommandBuffer(cmdBuffer, &cmdBufInfo));
 
-		/*
-			Dispatch the ray tracing commands
-		*/
-		vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, sceneShadingRayTracing.pipeline);
-		vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, sceneShadingRayTracing.pipelineLayout, 0, 1, &sceneShadingRayTracing.descriptorSets[currentBuffer], 0, 0);
-
-		VkStridedDeviceAddressRegionKHR emptySbtEntry = {};
-		vkCmdTraceRaysKHR(
-			cmdBuffer,
-			&sceneShadingRayTracing.shaderBindingTables.raygen.stridedDeviceAddressRegion,
-			&sceneShadingRayTracing.shaderBindingTables.miss.stridedDeviceAddressRegion,
-			&sceneShadingRayTracing.shaderBindingTables.hit.stridedDeviceAddressRegion,
-			&emptySbtEntry,
-			width,
-			height,
-			1);
-
+		sceneShadingRayTracing->recordCommandBuffer(cmdBuffer, currentBuffer);
 		/*
 			Copy ray tracing output to swap chain image
 		*/
@@ -748,7 +492,7 @@ public:
 		VulkanExampleBase::prepareFrame();
 		if (camera.updated) {
 			// If the camera's view has been updated we need to  reset the frame accumulation (which is used for transparent surfaces and anti-aliasing)
-			sceneShadingRayTracing.uniformData.frame = -1;
+			sceneShadingRayTracing->uniformData.frame = -1;
 		}
 		//printVec3(camera.position);
 		updateUniformBuffers();
