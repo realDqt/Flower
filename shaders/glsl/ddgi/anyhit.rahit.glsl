@@ -12,36 +12,49 @@
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
+#include "common.glsl"
+
 layout(location = 3) rayPayloadInEXT uint payloadSeed;
 
 hitAttributeEXT vec2 attribs;
 
 layout(binding = 3, set = 0) uniform sampler2D image;
 
-struct GeometryNode {
-	uint64_t vertexBufferDeviceAddress;
-	uint64_t indexBufferDeviceAddress;
-	int textureIndexBaseColor;
-	int textureIndexOcclusion;
-};
 layout(binding = 4, set = 0) buffer GeometryNodes { GeometryNode nodes[]; } geometryNodes;
 
 layout(binding = 5, set = 0) uniform sampler2D textures[];
 
-#include "bufferreferences.glsl"
-#include "geometrytypes.glsl"
-#include "random.glsl"
+Triangle unpackTriangle(uint index){
+	Triangle tri;
+	const uint triIndex = index * 3;
+
+	GeometryNode geometryNode = geometryNodes.nodes[gl_GeometryIndexEXT];
+
+	Indices indices = Indices(geometryNode.indexBufferDeviceAddress);
+	Vertices vertices = Vertices(geometryNode.vertexBufferDeviceAddress);
+
+	for(uint i = 0; i < 3; i++){
+		const uint offset = indices.i[triIndex + i];
+		tri.vertices[i] = vertices.v[offset];
+	}
+
+	vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
+	tri.normal = normalize(cross(tri.vertices[1].pos - tri.vertices[0].pos, tri.vertices[2].pos - tri.vertices[1].pos));
+	return tri;
+}
+
+
 
 void main()
 {
-	Triangle tri = unpackTriangle(gl_PrimitiveID, 112);
+	Triangle tri = unpackTriangle(gl_PrimitiveID);
 	GeometryNode geometryNode = geometryNodes.nodes[gl_GeometryIndexEXT];
-	vec4 color = texture(textures[nonuniformEXT(geometryNode.textureIndexBaseColor)], tri.uv);
+
+	vec2 uv = tri.vertices[0].uv * (1.0f - attribs.x - attribs.y) + tri.vertices[1].uv * attribs.x + tri.vertices[2].uv * attribs.y;
+	vec4 color = texture(textures[nonuniformEXT(geometryNode.textureIndexBaseColor)], uv);
 	// If the alpha value of the texture at the current UV coordinates is below a given threshold, we'll ignore this intersection
 	// That way ray traversal will be stopped and the miss shader will be invoked
 	if (color.a < 0.9) {
-		//if(rnd(payloadSeed) > color.a) {
-			ignoreIntersectionEXT;
-		//}
+		ignoreIntersectionEXT;
 	}
 }

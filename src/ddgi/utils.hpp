@@ -22,7 +22,7 @@ struct GeometryNode {
     uint64_t vertexBufferDeviceAddress;
     uint64_t indexBufferDeviceAddress;
     int32_t textureIndexBaseColor;
-    int32_t textureIndexOcclusion;
+    int32_t textureIndexMetallicRoughness;
 };
 
 inline std::string getShadersPath()

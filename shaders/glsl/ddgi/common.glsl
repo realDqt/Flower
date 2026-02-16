@@ -1,8 +1,38 @@
-/* Copyright (c) 2023, Sascha Willems
- *
- * SPDX-License-Identifier: MIT
- *
- */
+#extension  GL_EXT_buffer_reference : enable
+#extension  GL_EXT_scalar_block_layout : enable
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+struct Vertex {
+    vec3 pos;
+    vec3 normal;
+    vec2 uv;
+    vec4 color;
+    vec4 joint0;
+    vec4 weight0;
+    vec4 tangent;
+};
+
+struct Triangle{
+    Vertex vertices[3];
+    vec3 normal;
+};
+
+layout(buffer_reference, scalar) buffer Vertices {Vertex v[]; };
+layout(buffer_reference, scalar) buffer Indices {uint i[]; };
+
+struct GeometryNode{
+    uint64_t vertexBufferDeviceAddress;
+    uint64_t indexBufferDeviceAddress;
+    int textureIndexBaseColor;
+    int textureIndexMetallicRoughness;
+};
+
+struct Ray{
+    vec3 origin;
+    vec3 direction;
+    float tmin;
+    float tmax;
+};
 
 // Tiny Encryption Algorithm
 // By Fahad Zafar, Marc Olano and Aaron Curtis, see https://www.highperformancegraphics.org/previous/www_2010/media/GPUAlgorithms/HPG2010_GPUAlgorithms_Zafar.pdf
@@ -27,7 +57,7 @@ uint lcg(inout uint previous)
     const uint multiplier = 1664525u;
     const uint increment = 1013904223u;
     previous   = (multiplier * previous + increment);
-    return previous & 0x00FFFFFF;
+    return previous & 0x00FFFFFFu;
 }
 
 // Generate a random float in [0, 1) given the previous RNG state
@@ -35,3 +65,16 @@ float rnd(inout uint previous)
 {
     return (float(lcg(previous)) / float(0x01000000));
 }
+
+vec3 encodeNormal(vec3 v)
+{
+    v = (v + vec3(1.0)) * vec3(0.5);
+    return v;
+}
+
+vec3 decodeNormal(vec3 v)
+{
+    v = v * 2.0f - 1.0f;
+    return v;
+}
+

@@ -106,7 +106,7 @@ public:
 			&transformBuffer,
 			static_cast<uint32_t>(transformMatrices.size()) * sizeof(VkTransformMatrixKHR),
 			transformMatrices.data()));
-		
+
 		// Build
 		// One geometry per glTF node, so we can index materials using gl_GeometryIndexEXT
 		std::vector<uint32_t> maxPrimitiveCounts{};
@@ -152,7 +152,7 @@ public:
 						geometryNode.vertexBufferDeviceAddress = vertexBufferDeviceAddress.deviceAddress;
 						geometryNode.indexBufferDeviceAddress = indexBufferDeviceAddress.deviceAddress;
 						geometryNode.textureIndexBaseColor = primitive->material.baseColorTexture->index;
-						geometryNode.textureIndexOcclusion = primitive->material.occlusionTexture ? primitive->material.occlusionTexture->index : -1;
+						geometryNode.textureIndexMetallicRoughness = primitive->material.metallicRoughnessTexture ? primitive->material.metallicRoughnessTexture->index : -1;
 						geometryNodes.push_back(geometryNode);
 					}
 				}
@@ -268,7 +268,7 @@ public:
 		VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
 		accelerationStructureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
 		accelerationStructureGeometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
-		accelerationStructureGeometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+		accelerationStructureGeometry.flags = 0;
 		accelerationStructureGeometry.geometry.instances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
 		accelerationStructureGeometry.geometry.instances.arrayOfPointers = VK_FALSE;
 		accelerationStructureGeometry.geometry.instances.data = instanceDataDeviceAddress;
@@ -494,7 +494,7 @@ public:
 			// If the camera's view has been updated we need to  reset the frame accumulation (which is used for transparent surfaces and anti-aliasing)
 			sceneShadingRayTracing->uniformData.frame = -1;
 		}
-		//printVec3(camera.position);
+		printVec3(camera.position);
 		updateUniformBuffers();
 		buildCommandBuffer();
 		VulkanExampleBase::submitFrame();
