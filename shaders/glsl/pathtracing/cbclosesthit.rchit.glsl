@@ -75,6 +75,9 @@ void main()
     
     hitValue.mat = getMat();
     vec3 worldNormal = normalize(tri.normal * mat3(gl_WorldToObjectEXT)); // m^(-1)^T
+    if (gl_HitKindEXT == gl_HitKindBackFacingTriangleEXT) {
+       worldNormal = -worldNormal;
+    }
     hitValue.worldNormal = worldNormal;
     //hitValue.worldPos = cacWorldPosByRayHitInfo(); 
     hitValue.worldPos = cacWorldPosByInterpolation(tri); 

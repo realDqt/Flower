@@ -8,7 +8,7 @@
 #pragma once
 #include "SceneShadingRayTracing.hpp"
 
-class ClassRoom : public VulkanRaytracingSample
+class CornellBox : public VulkanRaytracingSample
 {
 public:
 	AccelerationStructure bottomLevelAS{};
@@ -19,33 +19,29 @@ public:
 	uint32_t indexCount{ 0 };
 	vks::Buffer transformBuffer;
 	vks::Buffer geometryNodesBuffer;
-	vkglTF::Model model;
+    vks::Buffer materialDataBuffer;
+
+    vkobj::Model cornell;
+    std::vector<std::string> filenames;
+    std::vector<vkobj::Material> materials;
 
 	VkPhysicalDeviceDescriptorIndexingFeaturesEXT physicalDeviceDescriptorIndexingFeatures{};
 
 	std::unique_ptr<SceneShadingRayTracing> sceneShadingRayTracing = nullptr;
 
-	ClassRoom() : VulkanRaytracingSample()
-	{
-		title = "DDGI";
-		camera.type = Camera::CameraType::firstperson;
-		camera.setPerspective(60.0f, (float)width / (float)height, 0.1f, 512.0f);
-		camera.setRotation(glm::vec3(0.0f, 0.0f, 0.0f));
-		camera.setTranslation(glm::vec3(0.0f, -0.1f, -1.0f));
+    CornellBox() : VulkanRaytracingSample()
+    {
+        title = "DDGI";
+        timerSpeed *= 100.0f;
+        camera.rotationSpeed *= 0.25f;
+        camera.type = Camera::CameraType::firstperson;
+        camera.setPerspective(60.0f, (float)width / (float)height, 0.1f, 512.0f);
+        camera.setRotation(glm::vec3(0.0f, 0.0f, 0.0f));
+        camera.setTranslation(glm::vec3(0.0f, 0.5f, -2.0f));
+        enableExtensions();
+    }
 
-		enableExtensions();
-
-		// Buffer device address requires the 64-bit integer feature to be enabled
-		enabledFeatures.shaderInt64 = VK_TRUE;
-		// Format for the storage image is decided at runtime, so we can't explicilily state it in the shader
-		enabledFeatures.shaderStorageImageReadWithoutFormat = VK_TRUE;
-		enabledFeatures.shaderStorageImageWriteWithoutFormat = VK_TRUE;
-
-		enabledDeviceExtensions.push_back(VK_KHR_MAINTENANCE3_EXTENSION_NAME);
-		enabledDeviceExtensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
-	}
-
-	~ClassRoom()
+	~CornellBox()
 	{
 		if (device) {
 			deleteStorageImage();
@@ -55,293 +51,288 @@ public:
 			indexBuffer.destroy();
 			transformBuffer.destroy();
 			geometryNodesBuffer.destroy();
+            materialDataBuffer.destroy();
 		}
 	}
 
-	void createAccelerationStructureBuffer(AccelerationStructure &accelerationStructure, VkAccelerationStructureBuildSizesInfoKHR buildSizeInfo)
-	{
-		VkBufferCreateInfo bufferCreateInfo{};
-		bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-		bufferCreateInfo.size = buildSizeInfo.accelerationStructureSize;
-		bufferCreateInfo.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-		VK_CHECK_RESULT(vkCreateBuffer(device, &bufferCreateInfo, nullptr, &accelerationStructure.buffer));
-		VkMemoryRequirements memoryRequirements{};
-		vkGetBufferMemoryRequirements(device, accelerationStructure.buffer, &memoryRequirements);
-		VkMemoryAllocateFlagsInfo memoryAllocateFlagsInfo{};
-		memoryAllocateFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
-		memoryAllocateFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
-		VkMemoryAllocateInfo memoryAllocateInfo{};
-		memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-		memoryAllocateInfo.pNext = &memoryAllocateFlagsInfo;
-		memoryAllocateInfo.allocationSize = memoryRequirements.size;
-		memoryAllocateInfo.memoryTypeIndex = vulkanDevice->getMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-		VK_CHECK_RESULT(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &accelerationStructure.memory));
-		VK_CHECK_RESULT(vkBindBufferMemory(device, accelerationStructure.buffer, accelerationStructure.memory, 0));
-	}
+    void createAccelerationStructureBuffer(AccelerationStructure& accelerationStructure, VkAccelerationStructureBuildSizesInfoKHR buildSizeInfo)
+    {
+        // create buffer
+        VkBufferCreateInfo bufferCreateInfo{};
+        bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferCreateInfo.size = buildSizeInfo.accelerationStructureSize;
+        bufferCreateInfo.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+        VK_CHECK_RESULT(vkCreateBuffer(device, &bufferCreateInfo, nullptr, &accelerationStructure.buffer));
 
-	/*
-		Create the bottom level acceleration structure that contains the scene's actual geometry (vertices, triangles)
-	*/
-	void createBottomLevelAccelerationStructure()
-	{
-		// Use transform matrices from the glTF nodes
-		std::vector<VkTransformMatrixKHR> transformMatrices{};
-		for (auto node : model.linearNodes) {
-			if (node->mesh) {
-				for (auto primitive : node->mesh->primitives) {
-					if (primitive->indexCount > 0) {
-						VkTransformMatrixKHR transformMatrix{};
-						auto m = glm::mat3x4(glm::transpose(node->getMatrix()));
-						memcpy(&transformMatrix, (void*)&m, sizeof(glm::mat3x4));
-						transformMatrices.push_back(transformMatrix);
-					}
-				}
-			}
-		}
+        // allocate memory
+        VkMemoryRequirements memoryRequirements{};
+        vkGetBufferMemoryRequirements(device, accelerationStructure.buffer, &memoryRequirements);
+        VkMemoryAllocateFlagsInfo memoryAllocateFlagsInfo{};
+        memoryAllocateFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+        memoryAllocateFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR;
+        VkMemoryAllocateInfo memoryAllocateInfo{};
+        memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        memoryAllocateInfo.pNext = &memoryAllocateFlagsInfo;
+        memoryAllocateInfo.allocationSize = memoryRequirements.size;
+        memoryAllocateInfo.memoryTypeIndex = vulkanDevice->getMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        VK_CHECK_RESULT(vkAllocateMemory(device, &memoryAllocateInfo, nullptr, &accelerationStructure.memory));
 
-		// Transform buffer
-		VK_CHECK_RESULT(vulkanDevice->createBuffer(
-			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			&transformBuffer,
-			static_cast<uint32_t>(transformMatrices.size()) * sizeof(VkTransformMatrixKHR),
-			transformMatrices.data()));
+        // bind buffer and memory
+        VK_CHECK_RESULT(vkBindBufferMemory(device, accelerationStructure.buffer, accelerationStructure.memory, 0));
+    }
 
-		// Build
-		// One geometry per glTF node, so we can index materials using gl_GeometryIndexEXT
-		std::vector<uint32_t> maxPrimitiveCounts{};
-		std::vector<VkAccelerationStructureGeometryKHR> geometries{};
-		std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRangeInfos{};
-		std::vector<VkAccelerationStructureBuildRangeInfoKHR*> pBuildRangeInfos{};
-		std::vector<GeometryNode> geometryNodes{};
-		for (auto node : model.linearNodes) {
-			if (node->mesh) {
-				for (auto primitive : node->mesh->primitives) {
-					if (primitive->indexCount > 0) {
-						VkDeviceOrHostAddressConstKHR vertexBufferDeviceAddress{};
-						VkDeviceOrHostAddressConstKHR indexBufferDeviceAddress{};
-						VkDeviceOrHostAddressConstKHR transformBufferDeviceAddress{};
+    // done
+    void createBottomLevelAccelerationStructure()
+    {
+        // Build
+        // One geometry per obj, so we can index materials using gl_GeometryIndexEXT
+        std::vector<uint32_t> maxPrimitiveCounts{};
+        std::vector<VkAccelerationStructureGeometryKHR> geometries{};
+        std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRangeInfos{};
+        std::vector<VkAccelerationStructureBuildRangeInfoKHR*> pBuildRangeInfos{};
+        std::vector<GeometryNode> geometryNodes{};
+        std::vector<vkobj::MaterialData> materialDataVec{};
+        int meshIndex = 0;
+        for (auto mesh : cornell.meshes) {
+            if (mesh->indexCount > 0) {
+                VkDeviceOrHostAddressConstKHR vertexBufferDeviceAddress{};
+                VkDeviceOrHostAddressConstKHR indexBufferDeviceAddress{};
 
-						vertexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(model.vertices.buffer);// +primitive->firstVertex * sizeof(vkglTF::Vertex);
-						indexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(model.indices.buffer) + primitive->firstIndex * sizeof(uint32_t);
-						transformBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(transformBuffer.buffer) + static_cast<uint32_t>(geometryNodes.size()) * sizeof(VkTransformMatrixKHR);
+                vertexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(cornell.vertices.buffer);
+                indexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(cornell.indices.buffer) + mesh->firstIndex * sizeof(uint32_t);
 
-						VkAccelerationStructureGeometryKHR geometry{};
-						geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
-						geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
-						geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
-						geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-						geometry.geometry.triangles.vertexData = vertexBufferDeviceAddress;
-						geometry.geometry.triangles.maxVertex = model.vertices.count;
-						//geometry.geometry.triangles.maxVertex = primitive->vertexCount;
-						geometry.geometry.triangles.vertexStride = sizeof(vkglTF::Vertex);
-						geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
-						geometry.geometry.triangles.indexData = indexBufferDeviceAddress;
-						geometry.geometry.triangles.transformData = transformBufferDeviceAddress;
-						geometries.push_back(geometry);
-						maxPrimitiveCounts.push_back(primitive->indexCount / 3);
 
-						VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo{};
-						buildRangeInfo.firstVertex = 0;
-						buildRangeInfo.primitiveOffset = 0; // primitive->firstIndex * sizeof(uint32_t);
-						buildRangeInfo.primitiveCount = primitive->indexCount / 3;
-						buildRangeInfo.transformOffset = 0;
-						buildRangeInfos.push_back(buildRangeInfo);
+                VkAccelerationStructureGeometryKHR geometry{};
+                geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+                geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+                geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+                geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+                geometry.geometry.triangles.vertexData = vertexBufferDeviceAddress;
+                geometry.geometry.triangles.maxVertex = cornell.vertices.count;
+                geometry.geometry.triangles.vertexStride = sizeof(vkobj::Vertex);
+                geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
+                geometry.geometry.triangles.indexData = indexBufferDeviceAddress;
+                geometries.push_back(geometry);
+                maxPrimitiveCounts.push_back(mesh->indexCount / 3);
 
-						GeometryNode geometryNode{};
-						geometryNode.vertexBufferDeviceAddress = vertexBufferDeviceAddress.deviceAddress;
-						geometryNode.indexBufferDeviceAddress = indexBufferDeviceAddress.deviceAddress;
-						geometryNode.textureIndexBaseColor = primitive->material.baseColorTexture->index;
-						geometryNode.textureIndexMetallicRoughness = primitive->material.metallicRoughnessTexture ? primitive->material.metallicRoughnessTexture->index : -1;
-						geometryNodes.push_back(geometryNode);
-					}
-				}
-			}
-		}
-		for (auto& rangeInfo : buildRangeInfos) {
-			pBuildRangeInfos.push_back(&rangeInfo);
-		}
+                VkAccelerationStructureBuildRangeInfoKHR buildRangeInfo{};
+                buildRangeInfo.firstVertex = 0;
+                buildRangeInfo.primitiveOffset = 0;
+                buildRangeInfo.primitiveCount = mesh->indexCount / 3;
+                buildRangeInfo.transformOffset = 0;
+                buildRangeInfos.push_back(buildRangeInfo);
 
-		vks::Buffer stagingBuffer;
+                GeometryNode geometryNode{};
+                geometryNode.vertexBufferDeviceAddress = vertexBufferDeviceAddress.deviceAddress;
+                geometryNode.indexBufferDeviceAddress = indexBufferDeviceAddress.deviceAddress;
+                geometryNodes.push_back(geometryNode);
 
-		VK_CHECK_RESULT(vulkanDevice->createBuffer(
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			&stagingBuffer,
-			static_cast<uint32_t>(geometryNodes.size()) * sizeof(GeometryNode),
-			geometryNodes.data()));
+                materialDataVec.push_back(mesh->material.GetData());
+            }
+            meshIndex++;
+        }
+        for (auto& rangeInfo : buildRangeInfos) {
+            pBuildRangeInfos.push_back(&rangeInfo);
+        }
 
-		VK_CHECK_RESULT(vulkanDevice->createBuffer(
-			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			&geometryNodesBuffer,
-			static_cast<uint32_t>(geometryNodes.size()) * sizeof(GeometryNode)));
+        // geometry node buffer
+        vks::Buffer stagingBuffer;
 
-		vulkanDevice->copyBuffer(&stagingBuffer, &geometryNodesBuffer, queue);
+        VK_CHECK_RESULT(vulkanDevice->createBuffer(
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                &stagingBuffer,
+                static_cast<uint32_t>(geometryNodes.size()) * sizeof(GeometryNode),
+                geometryNodes.data()));
 
-		stagingBuffer.destroy();
-	
-		// Get size info
-		VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo{};
-		accelerationStructureBuildGeometryInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
-		accelerationStructureBuildGeometryInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-		accelerationStructureBuildGeometryInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
-		accelerationStructureBuildGeometryInfo.geometryCount = static_cast<uint32_t>(geometries.size());
-		accelerationStructureBuildGeometryInfo.pGeometries = geometries.data();
-		
-		VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
-		accelerationStructureBuildSizesInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
-		vkGetAccelerationStructureBuildSizesKHR(
-			device,
-			VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
-			&accelerationStructureBuildGeometryInfo,
-			maxPrimitiveCounts.data(),
-			&accelerationStructureBuildSizesInfo);
+        VK_CHECK_RESULT(vulkanDevice->createBuffer(
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                &geometryNodesBuffer,
+                static_cast<uint32_t>(geometryNodes.size()) * sizeof(GeometryNode)));
 
-		createAccelerationStructureBuffer(bottomLevelAS, accelerationStructureBuildSizesInfo);
+        vulkanDevice->copyBuffer(&stagingBuffer, &geometryNodesBuffer, queue);
 
-		VkAccelerationStructureCreateInfoKHR accelerationStructureCreateInfo{};
-		accelerationStructureCreateInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
-		accelerationStructureCreateInfo.buffer = bottomLevelAS.buffer;
-		accelerationStructureCreateInfo.size = accelerationStructureBuildSizesInfo.accelerationStructureSize;
-		accelerationStructureCreateInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-		vkCreateAccelerationStructureKHR(device, &accelerationStructureCreateInfo, nullptr, &bottomLevelAS.handle);
+        stagingBuffer.destroy();
 
-		// Create a small scratch buffer used during build of the bottom level acceleration structure
-		ScratchBuffer scratchBuffer = createScratchBuffer(accelerationStructureBuildSizesInfo.buildScratchSize);
+        // base color buffer
+        vks::Buffer stagingBuffer2;
 
-		accelerationStructureBuildGeometryInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
-		accelerationStructureBuildGeometryInfo.dstAccelerationStructure = bottomLevelAS.handle;
-		accelerationStructureBuildGeometryInfo.scratchData.deviceAddress = scratchBuffer.deviceAddress;
+        VK_CHECK_RESULT(vulkanDevice->createBuffer(
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                &stagingBuffer2,
+                static_cast<uint32_t>(materialDataVec.size()) * sizeof(vkobj::MaterialData),
+                materialDataVec.data()));
 
-		const VkAccelerationStructureBuildRangeInfoKHR* buildOffsetInfo = buildRangeInfos.data();
+        VK_CHECK_RESULT(vulkanDevice->createBuffer(
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                &materialDataBuffer,
+                static_cast<uint32_t>(materialDataVec.size()) * sizeof(vkobj::MaterialData)));
 
-		// Build the acceleration structure on the device via a one-time command buffer submission
-		// Some implementations may support acceleration structure building on the host (VkPhysicalDeviceAccelerationStructureFeaturesKHR->accelerationStructureHostCommands), but we prefer device builds
-		VkCommandBuffer commandBuffer = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
-		vkCmdBuildAccelerationStructuresKHR(
-			commandBuffer,
-			1,
-			&accelerationStructureBuildGeometryInfo,
-			pBuildRangeInfos.data());
-		vulkanDevice->flushCommandBuffer(commandBuffer, queue);
+        vulkanDevice->copyBuffer(&stagingBuffer2, &materialDataBuffer, queue);
 
-		VkAccelerationStructureDeviceAddressInfoKHR accelerationDeviceAddressInfo{};
-		accelerationDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
-		accelerationDeviceAddressInfo.accelerationStructure = bottomLevelAS.handle;
-		bottomLevelAS.deviceAddress = vkGetAccelerationStructureDeviceAddressKHR(device, &accelerationDeviceAddressInfo);
+        stagingBuffer2.destroy();
 
-		deleteScratchBuffer(scratchBuffer);
-	}
 
-	/*
-		The top level acceleration structure contains the scene's object instances++
-	*/
-	void createTopLevelAccelerationStructure()
-	{
-		// We flip the matrix [1][1] = -1.0f to accomodate for the glTF up vector
-		VkTransformMatrixKHR transformMatrix = {
-			1.0f, 0.0f, 0.0f, 0.0f,
-			0.0f, -1.0f, 0.0f, 0.0f,
-			0.0f, 0.0f, 1.0f, 0.0f };
+        // Get size info
+        VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo{};
+        accelerationStructureBuildGeometryInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+        accelerationStructureBuildGeometryInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+        accelerationStructureBuildGeometryInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        accelerationStructureBuildGeometryInfo.geometryCount = static_cast<uint32_t>(geometries.size());
+        accelerationStructureBuildGeometryInfo.pGeometries = geometries.data();
 
-		VkAccelerationStructureInstanceKHR instance{};
-		instance.transform = transformMatrix;
-		instance.instanceCustomIndex = 0;
-		instance.mask = 0xFF;
-		instance.instanceShaderBindingTableRecordOffset = 0;
-		instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-		instance.accelerationStructureReference = bottomLevelAS.deviceAddress;
+        VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
+        accelerationStructureBuildSizesInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+        vkGetAccelerationStructureBuildSizesKHR(
+                device,
+                VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+                &accelerationStructureBuildGeometryInfo,
+                maxPrimitiveCounts.data(),
+                &accelerationStructureBuildSizesInfo);
 
-		// Buffer for instance data
-		vks::Buffer instancesBuffer;
-		VK_CHECK_RESULT(vulkanDevice->createBuffer(
-			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			&instancesBuffer,
-			sizeof(VkAccelerationStructureInstanceKHR),
-			&instance));
+        createAccelerationStructureBuffer(bottomLevelAS, accelerationStructureBuildSizesInfo);
 
-		VkDeviceOrHostAddressConstKHR instanceDataDeviceAddress{};
-		instanceDataDeviceAddress.deviceAddress = getBufferDeviceAddress(instancesBuffer.buffer);
+        VkAccelerationStructureCreateInfoKHR accelerationStructureCreateInfo{};
+        accelerationStructureCreateInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+        accelerationStructureCreateInfo.buffer = bottomLevelAS.buffer;
+        accelerationStructureCreateInfo.size = accelerationStructureBuildSizesInfo.accelerationStructureSize;
+        accelerationStructureCreateInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+        vkCreateAccelerationStructureKHR(device, &accelerationStructureCreateInfo, nullptr, &bottomLevelAS.handle);
 
-		VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
-		accelerationStructureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
-		accelerationStructureGeometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
-		accelerationStructureGeometry.flags = 0;
-		accelerationStructureGeometry.geometry.instances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
-		accelerationStructureGeometry.geometry.instances.arrayOfPointers = VK_FALSE;
-		accelerationStructureGeometry.geometry.instances.data = instanceDataDeviceAddress;
+        // Create a small scratch buffer used during build of the bottom level acceleration structure
+        ScratchBuffer scratchBuffer = createScratchBuffer(accelerationStructureBuildSizesInfo.buildScratchSize);
 
-		// Get size info
-		/*
-		The pSrcAccelerationStructure, dstAccelerationStructure, and mode members of pBuildInfo are ignored. Any VkDeviceOrHostAddressKHR members of pBuildInfo are ignored by this command, except that the hostAddress member of VkAccelerationStructureGeometryTrianglesDataKHR::transformData will be examined to check if it is NULL.*
-		*/
-		VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo{};
-		accelerationStructureBuildGeometryInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
-		accelerationStructureBuildGeometryInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
-		accelerationStructureBuildGeometryInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
-		accelerationStructureBuildGeometryInfo.geometryCount = 1;
-		accelerationStructureBuildGeometryInfo.pGeometries = &accelerationStructureGeometry;
+        accelerationStructureBuildGeometryInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+        accelerationStructureBuildGeometryInfo.dstAccelerationStructure = bottomLevelAS.handle;
+        accelerationStructureBuildGeometryInfo.scratchData.deviceAddress = scratchBuffer.deviceAddress;
 
-		uint32_t primitive_count = 1;
+        const VkAccelerationStructureBuildRangeInfoKHR* buildOffsetInfo = buildRangeInfos.data();
 
-		VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
-		accelerationStructureBuildSizesInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
-		vkGetAccelerationStructureBuildSizesKHR(
-			device, 
-			VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
-			&accelerationStructureBuildGeometryInfo,
-			&primitive_count,
-			&accelerationStructureBuildSizesInfo);
+        // Build the acceleration structure on the device via a one-time command buffer submission
+        // Some implementations may support acceleration structure building on the host (VkPhysicalDeviceAccelerationStructureFeaturesKHR->accelerationStructureHostCommands), but we prefer device builds
+        VkCommandBuffer commandBuffer = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+        vkCmdBuildAccelerationStructuresKHR(
+                commandBuffer,
+                1,
+                &accelerationStructureBuildGeometryInfo,
+                pBuildRangeInfos.data());
+        vulkanDevice->flushCommandBuffer(commandBuffer, queue);
 
-		createAccelerationStructureBuffer(topLevelAS, accelerationStructureBuildSizesInfo);
+        VkAccelerationStructureDeviceAddressInfoKHR accelerationDeviceAddressInfo{};
+        accelerationDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+        accelerationDeviceAddressInfo.accelerationStructure = bottomLevelAS.handle;
+        bottomLevelAS.deviceAddress = vkGetAccelerationStructureDeviceAddressKHR(device, &accelerationDeviceAddressInfo);
 
-		VkAccelerationStructureCreateInfoKHR accelerationStructureCreateInfo{};
-		accelerationStructureCreateInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
-		accelerationStructureCreateInfo.buffer = topLevelAS.buffer;
-		accelerationStructureCreateInfo.size = accelerationStructureBuildSizesInfo.accelerationStructureSize;
-		accelerationStructureCreateInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
-		vkCreateAccelerationStructureKHR(device, &accelerationStructureCreateInfo, nullptr, &topLevelAS.handle);
+        deleteScratchBuffer(scratchBuffer);
+    }
 
-		// Create a small scratch buffer used during build of the top level acceleration structure
-		ScratchBuffer scratchBuffer = createScratchBuffer(accelerationStructureBuildSizesInfo.buildScratchSize);
+    /*
+        The top level acceleration structure contains the scene's object instances
+    */
+    // done
+    void createTopLevelAccelerationStructure()
+    {
+        VkTransformMatrixKHR transformMatrix = {};
 
-		VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo{};
-		accelerationBuildGeometryInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
-		accelerationBuildGeometryInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
-		accelerationBuildGeometryInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
-		accelerationBuildGeometryInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
-		accelerationBuildGeometryInfo.dstAccelerationStructure = topLevelAS.handle;
-		accelerationBuildGeometryInfo.geometryCount = 1;
-		accelerationBuildGeometryInfo.pGeometries = &accelerationStructureGeometry;
-		accelerationBuildGeometryInfo.scratchData.deviceAddress = scratchBuffer.deviceAddress;
+        auto m44 = glm::mat4(1.0f);
+        float scale = 0.001f;
+        glm::vec3 axisX = glm::vec3(1.0f, 0.0f, 0.0f);
 
-		VkAccelerationStructureBuildRangeInfoKHR accelerationStructureBuildRangeInfo{};
-		accelerationStructureBuildRangeInfo.primitiveCount = 1;
-		accelerationStructureBuildRangeInfo.primitiveOffset = 0;
-		accelerationStructureBuildRangeInfo.firstVertex = 0;
-		accelerationStructureBuildRangeInfo.transformOffset = 0;
-		std::vector<VkAccelerationStructureBuildRangeInfoKHR*> accelerationBuildStructureRangeInfos = { &accelerationStructureBuildRangeInfo };
+        m44 = glm::rotate(m44, glm::radians(180.0f), axisX);
+        m44 = glm::scale(m44, glm::vec3(scale));
 
-		// Build the acceleration structure on the device via a one-time command buffer submission
-		// Some implementations may support acceleration structure building on the host (VkPhysicalDeviceAccelerationStructureFeaturesKHR->accelerationStructureHostCommands), but we prefer device builds
-		VkCommandBuffer commandBuffer = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
-		vkCmdBuildAccelerationStructuresKHR(
-			commandBuffer,
-			1,
-			&accelerationBuildGeometryInfo,
-			accelerationBuildStructureRangeInfos.data());
-		vulkanDevice->flushCommandBuffer(commandBuffer, queue);
+        // 转置以适应 Vulkan [3][4] 行主序布局
+        auto m44Trans = glm::transpose(m44);
+        const float* rawData = reinterpret_cast<const float*>(&m44Trans);
+        for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 4; ++j) {
+                transformMatrix.matrix[i][j] = rawData[i * 4 + j];
+            }
+        }
 
-		VkAccelerationStructureDeviceAddressInfoKHR accelerationDeviceAddressInfo{};
-		accelerationDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
-		accelerationDeviceAddressInfo.accelerationStructure = topLevelAS.handle;
+        VkAccelerationStructureInstanceKHR instance{};
+        instance.transform = transformMatrix;
+        instance.instanceCustomIndex = 0;
+        instance.mask = 0xFF;
+        instance.instanceShaderBindingTableRecordOffset = 0;
+        instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+        instance.accelerationStructureReference = bottomLevelAS.deviceAddress;
 
-		deleteScratchBuffer(scratchBuffer);
-		instancesBuffer.destroy();
-	}
-	
+        // Buffer for instance data
+        vks::Buffer instancesBuffer;
+        VK_CHECK_RESULT(vulkanDevice->createBuffer(
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                &instancesBuffer,
+                sizeof(VkAccelerationStructureInstanceKHR),
+                &instance));
+
+        VkDeviceOrHostAddressConstKHR instanceDataDeviceAddress{};
+        instanceDataDeviceAddress.deviceAddress = getBufferDeviceAddress(instancesBuffer.buffer);
+
+        VkAccelerationStructureGeometryKHR accelerationStructureGeometry = vks::initializers::accelerationStructureGeometryKHR();
+        accelerationStructureGeometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+        accelerationStructureGeometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+        accelerationStructureGeometry.geometry.instances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+        accelerationStructureGeometry.geometry.instances.arrayOfPointers = VK_FALSE;
+        accelerationStructureGeometry.geometry.instances.data = instanceDataDeviceAddress;
+
+        // Get size info
+        VkAccelerationStructureBuildGeometryInfoKHR accelerationStructureBuildGeometryInfo = vks::initializers::accelerationStructureBuildGeometryInfoKHR();
+        accelerationStructureBuildGeometryInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+        accelerationStructureBuildGeometryInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        accelerationStructureBuildGeometryInfo.geometryCount = 1;
+        accelerationStructureBuildGeometryInfo.pGeometries = &accelerationStructureGeometry;
+
+        uint32_t primitive_count = 1;
+
+        VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo = vks::initializers::accelerationStructureBuildSizesInfoKHR();
+        vkGetAccelerationStructureBuildSizesKHR(
+                device,
+                VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+                &accelerationStructureBuildGeometryInfo,
+                &primitive_count,
+                &accelerationStructureBuildSizesInfo);
+
+        createAccelerationStructure(topLevelAS, VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR, accelerationStructureBuildSizesInfo);
+
+        // Create a small scratch buffer used during build of the top level acceleration structure
+        ScratchBuffer scratchBuffer = createScratchBuffer(accelerationStructureBuildSizesInfo.buildScratchSize);
+
+        VkAccelerationStructureBuildGeometryInfoKHR accelerationBuildGeometryInfo = vks::initializers::accelerationStructureBuildGeometryInfoKHR();
+        accelerationBuildGeometryInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+        accelerationBuildGeometryInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+        accelerationBuildGeometryInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+        accelerationBuildGeometryInfo.dstAccelerationStructure = topLevelAS.handle;
+        accelerationBuildGeometryInfo.geometryCount = 1;
+        accelerationBuildGeometryInfo.pGeometries = &accelerationStructureGeometry;
+        accelerationBuildGeometryInfo.scratchData.deviceAddress = scratchBuffer.deviceAddress;
+
+        VkAccelerationStructureBuildRangeInfoKHR accelerationStructureBuildRangeInfo{};
+        accelerationStructureBuildRangeInfo.primitiveCount = 1;
+        accelerationStructureBuildRangeInfo.primitiveOffset = 0;
+        accelerationStructureBuildRangeInfo.firstVertex = 0;
+        accelerationStructureBuildRangeInfo.transformOffset = 0;
+        std::vector<VkAccelerationStructureBuildRangeInfoKHR*> accelerationBuildStructureRangeInfos = { &accelerationStructureBuildRangeInfo };
+
+        // Build the acceleration structure on the device via a one-time command buffer submission
+        // Some implementations may support acceleration structure building on the host (VkPhysicalDeviceAccelerationStructureFeaturesKHR->accelerationStructureHostCommands), but we prefer device builds
+        VkCommandBuffer commandBuffer = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+        vkCmdBuildAccelerationStructuresKHR(
+                commandBuffer,
+                1,
+                &accelerationBuildGeometryInfo,
+                accelerationBuildStructureRangeInfos.data());
+        vulkanDevice->flushCommandBuffer(commandBuffer, queue);
+
+        deleteScratchBuffer(scratchBuffer);
+        instancesBuffer.destroy();
+    }
+
+
 	/*
 		If the window has been resized, we need to recreate the storage image and it's descriptor
 	*/
@@ -372,36 +363,70 @@ public:
 		memcpy(sceneShadingRayTracing->uniformBuffers[currentBuffer].mapped, &sceneShadingRayTracing->uniformData, sizeof(SceneShadingRayTracing::UniformData));
 	}
 
-	void getEnabledFeatures()
-	{
-		// Enable features required for ray tracing using feature chaining via pNext		
-		enabledBufferDeviceAddresFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
-		enabledBufferDeviceAddresFeatures.bufferDeviceAddress = VK_TRUE;
+    // done
+    void getEnabledFeatures()
+    {
+        // Enable features required for ray tracing using feature chaining via pNext
+        enabledBufferDeviceAddresFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+        enabledBufferDeviceAddresFeatures.bufferDeviceAddress = VK_TRUE;
 
-		enabledRayTracingPipelineFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
-		enabledRayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
-		enabledRayTracingPipelineFeatures.pNext = &enabledBufferDeviceAddresFeatures;
+        enabledRayTracingPipelineFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
+        enabledRayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
+        enabledRayTracingPipelineFeatures.pNext = &enabledBufferDeviceAddresFeatures;
 
-		enabledAccelerationStructureFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
-		enabledAccelerationStructureFeatures.accelerationStructure = VK_TRUE;
-		enabledAccelerationStructureFeatures.pNext = &enabledRayTracingPipelineFeatures;
+        enabledAccelerationStructureFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+        enabledAccelerationStructureFeatures.accelerationStructure = VK_TRUE;
+        enabledAccelerationStructureFeatures.pNext = &enabledRayTracingPipelineFeatures;
 
-		physicalDeviceDescriptorIndexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
-		physicalDeviceDescriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
-		physicalDeviceDescriptorIndexingFeatures.runtimeDescriptorArray = VK_TRUE;
-		physicalDeviceDescriptorIndexingFeatures.descriptorBindingVariableDescriptorCount = VK_TRUE;
-		physicalDeviceDescriptorIndexingFeatures.pNext = &enabledAccelerationStructureFeatures;
+        physicalDeviceDescriptorIndexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
+        physicalDeviceDescriptorIndexingFeatures.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+        physicalDeviceDescriptorIndexingFeatures.runtimeDescriptorArray = VK_TRUE;
+        physicalDeviceDescriptorIndexingFeatures.descriptorBindingVariableDescriptorCount = VK_TRUE;
+        physicalDeviceDescriptorIndexingFeatures.pNext = &enabledAccelerationStructureFeatures;
 
-		deviceCreatepNextChain = &physicalDeviceDescriptorIndexingFeatures;
+        deviceCreatepNextChain = &physicalDeviceDescriptorIndexingFeatures;
 
-		enabledFeatures.samplerAnisotropy = VK_TRUE;
-	}
+        enabledFeatures.samplerAnisotropy = VK_TRUE;
+    }
 
-	void loadAssets()
-	{
-		vkglTF::memoryPropertyFlags = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-		model.loadFromFile(getAssetPath() + "models/classroom/scene.gltf", vulkanDevice, queue);
-	}
+    void loadAssets()
+    {
+        filenames.clear();
+        materials.clear();
+
+        // 准备路径与材质
+        std::string assetPath = getAssetPath();
+        filenames.push_back(assetPath + "models/cornellbox/floor.obj");
+        filenames.push_back(assetPath + "models/cornellbox/left.obj");
+        filenames.push_back(assetPath + "models/cornellbox/light.obj");
+        filenames.push_back(assetPath + "models/cornellbox/right.obj");
+        filenames.push_back(assetPath + "models/cornellbox/shortbox.obj");
+        filenames.push_back(assetPath + "models/cornellbox/tallbox.obj");
+
+        vkobj::Material red(vulkanDevice);
+        red.baseColor =  glm::vec4(0.63f, 0.065f, 0.05f, 1.0f);
+        vkobj::Material green(vulkanDevice);
+        green.baseColor =  glm::vec4(0.14f, 0.45f, 0.091f, 1.0f);
+        vkobj::Material white(vulkanDevice);
+        white.baseColor =  glm::vec4(0.725f, 0.71f, 0.68f, 1.0f);
+        vkobj::Material light(vulkanDevice);
+        light.baseColor =  glm::vec4(0.65f, 0.65f, 0.65f, 1.0f);
+        light.emission = 8.0f * glm::vec3(0.747f+0.058f, 0.747f+0.258f, 0.747f) + 15.6f * glm::vec3(0.740f+0.287f,0.740f+0.160f,0.740f) + 18.4f * glm::vec3(0.737f+0.642f,0.737f+0.159f,0.737f);
+        vkobj::Material specular(vulkanDevice);
+        specular.baseColor = glm::vec4(0.725f, 0.71f, 0.68f, 1.0f);
+        specular.metallic = 1.0f;
+        specular.roughness = 0.0f;
+
+        materials.push_back(white);
+        materials.push_back(red);
+        materials.push_back(light);
+        materials.push_back(green);
+        materials.push_back(white);
+        materials.push_back(white);
+
+        // 加载obj
+        cornell.loadFromFile(filenames, materials, vulkanDevice, queue);
+    }
 
 	void prepare()
 	{
@@ -414,7 +439,7 @@ public:
 		createTopLevelAccelerationStructure();
 		createStorageImage(swapChain.colorFormat, { width, height, 1 });
 
-		sceneShadingRayTracing = std::make_unique<SceneShadingRayTracing>(device, &rayTracingPipelineProperties, vulkanDevice, &model, descriptorPool, &bottomLevelAS, &topLevelAS, &storageImage, &geometryNodesBuffer);
+		sceneShadingRayTracing = std::make_unique<SceneShadingRayTracing>(device, &rayTracingPipelineProperties, vulkanDevice, &cornell, &bottomLevelAS, &topLevelAS, &storageImage, &geometryNodesBuffer, &materialDataBuffer);
 		sceneShadingRayTracing->prepare();
 		prepared = true;
 	}
@@ -427,7 +452,7 @@ public:
 		}
 
 		VkCommandBuffer cmdBuffer = drawCmdBuffers[currentBuffer];
-		
+
 		VkCommandBufferBeginInfo cmdBufInfo = vks::initializers::commandBufferBeginInfo();
 
 		VkImageSubresourceRange subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
@@ -501,23 +526,23 @@ public:
 	}
 };
 
-ClassRoom* classRoom;																		
-LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)						
-{																									
-	if (classRoom != NULL)																		
-	{																								
-		classRoom->handleMessages(hWnd, uMsg, wParam, lParam);									
-	}																								
-	return (DefWindowProc(hWnd, uMsg, wParam, lParam));												
-}																									
-int APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_  HINSTANCE hPrevInstance, _In_ LPSTR, _In_ int) 
-{																									
-	for (int32_t i = 0; i < __argc; i++) { ClassRoom::args.push_back(__argv[i]); }			
-	classRoom = new ClassRoom();															
-	classRoom->initVulkan();																	
-	classRoom->setupWindow(hInstance, WndProc);													
-	classRoom->prepare();																		
-	classRoom->renderLoop();																	
-	delete(classRoom);																			
-	return 0;																						
+CornellBox *cornellBox;
+LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    if (cornellBox != NULL)
+    {
+        cornellBox->handleMessages(hWnd, uMsg, wParam, lParam);
+    }
+    return (DefWindowProc(hWnd, uMsg, wParam, lParam));
+}
+int APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_  HINSTANCE hPrevInstance, _In_ LPSTR, _In_ int)
+{
+    for (int32_t i = 0; i < __argc; i++) { CornellBox::args.push_back(__argv[i]); }
+    cornellBox = new CornellBox();
+    cornellBox->initVulkan();
+    cornellBox->setupWindow(hInstance, WndProc);
+    cornellBox->prepare();
+    cornellBox->renderLoop();
+    delete(cornellBox);
+    return 0;
 }

@@ -1,15 +1,12 @@
-/* Copyright (c) 2023, Sascha Willems
- *
- * SPDX-License-Identifier: MIT
- *
- */
-
 #version 460
 #extension GL_EXT_ray_tracing : enable
+#extension GL_GOOGLE_include_directive : enable
+#extension GL_ARB_shading_language_include : enable
 
-layout(location = 0) rayPayloadInEXT vec3 hitValue;
+#include "common.glsl"
+layout(location = 0) rayPayloadInEXT RayPayload hitValue;
 
 void main()
 {
-    hitValue = vec3(1.0);
+    hitValue.dis = -1.0f;
 }

@@ -1,33 +1,21 @@
-/* Copyright (c) 2023, Sascha Willems
- *
- * SPDX-License-Identifier: MIT
- *
- */
-
 #version 460
 
 #extension GL_EXT_ray_tracing : require
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_nonuniform_qualifier : require
-#extension GL_EXT_buffer_reference2 : require
-#extension GL_EXT_scalar_block_layout : require
-// 必须开启此扩展，因为 common.glsl 中使用了 uint64_t
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
 #include "common.glsl"
-
-layout(location = 0) rayPayloadInEXT vec3 hitValue;
-layout(location = 2) rayPayloadEXT bool shadowed;
+layout(location = 0) rayPayloadInEXT RayPayload hitValue;
 hitAttributeEXT vec2 attribs;
 
 layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
-layout(binding = 3, set = 0) uniform sampler2D image;
 
-layout(binding = 4, set = 0) buffer GeometryNodes { GeometryNode nodes[]; } geometryNodes;
+layout(binding = 3, set = 0) buffer GeometryNodes {GeometryNode nodes[];}geometryNodes;
 
-layout(binding = 5, set = 0) uniform sampler2D textures[];
 
-// 辅助函数：解包三角形数据
+layout(binding = 4, set = 0) buffer Materials {Material mats[];} materials;
+
+
 Triangle unpackTriangle(uint index){
 	Triangle tri;
 	const uint triIndex = index * 3;
@@ -42,71 +30,55 @@ Triangle unpackTriangle(uint index){
 		tri.vertices[i] = vertices.v[offset];
 	}
 
-	// 计算模型空间 (Object Space) 下的几何法线
+	vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
 	tri.normal = normalize(cross(tri.vertices[1].pos - tri.vertices[0].pos, tri.vertices[2].pos - tri.vertices[1].pos));
 	return tri;
 }
 
+Material getMat()
+{
+	return materials.mats[gl_GeometryIndexEXT];
+}
+
+vec4 getBaseColor()
+{
+	return getMat().baseColor;
+}
+
+vec3 getEmission()
+{
+	return getMat().emission;
+}
+
+vec3 cacWorldPosByInterpolation(Triangle tri)
+{
+	const vec3 barycentrics = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
+	vec3 p0 = tri.vertices[0].pos;
+	vec3 p1 = tri.vertices[1].pos;
+	vec3 p2 = tri.vertices[2].pos;
+	vec3 localPos = p0 * barycentrics.x + p1 * barycentrics.y + p2 * barycentrics.z;
+	return vec3(gl_ObjectToWorldEXT * vec4(localPos, 1.0));
+}
+
+vec3 cacWorldPosByRayHitInfo()
+{
+	return gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT;
+}
+
 void main()
 {
+
 	Triangle tri = unpackTriangle(gl_PrimitiveID);
 
-	GeometryNode geometryNode = geometryNodes.nodes[gl_GeometryIndexEXT];
 
-	// 1. 计算 UV 和获取基础颜色
-	vec2 uv = tri.vertices[0].uv * (1.0f - attribs.x - attribs.y) +
-	tri.vertices[1].uv * attribs.x +
-	tri.vertices[2].uv * attribs.y;
+	hitValue.mat = getMat();
+	hitValue.dis = gl_HitTEXT;
 
-	vec3 color = texture(textures[nonuniformEXT(geometryNode.textureIndexBaseColor)], uv).rgb;
+	vec3 worldNormal = normalize(tri.normal * mat3(gl_WorldToObjectEXT)); // m^(-1)^T
 
-	// -------------------------------------------------------------------------
-	// 修复逻辑开始
-	// -------------------------------------------------------------------------
-
-	// 2. 【关键修复】计算世界空间法线 (World Space Normal)
-	vec3 worldNormal =  normalize(vec3(tri.normal * gl_WorldToObjectEXT));
-
-	// 3. 定义指向光源的方向向量 L
-	// 原代码 lightDir = (0.01, -1.0, 1.0) 是光线射出的方向
-	// 我们需要指向光源的方向，所以取反：(-0.01, 1.0, -1.0)
-	vec3 lightVec = normalize(vec3(-0.01, 1.0, -1.0));
-
-	// 4. 【关键修复】计算 Lambertian (N dot L)
-	// 这一步决定了表面是“受光”还是“背光”
-	float NdotL = max(0.0, dot(worldNormal, lightVec));
-
-	hitValue = encodeNormal(worldNormal);
-	/*
-	// 默认将结果设为黑色（阴影中）
-	hitValue = vec3(0.0);
-
-	// 5. 只有当表面面向光源时，才进行阴影判断和光照计算
-	if (NdotL > 0.0)
-	{
-		shadowed = true;
-
-		// 6. 【优化】阴影偏移 (Shadow Bias)
-		// 起点沿着法线向外偏移一点点，防止浮点数精度导致的“自遮挡”噪点
-		float tmin = 0.001;
-		float tmax = 10000.0;
-		vec3 origin = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT;
-		vec3 shadowOrigin = origin + worldNormal * 0.001;
-
-		// 7. 发射阴影射线
-		// flags 增加了 gl_RayFlagsTerminateOnFirstHitEXT，只要碰到任何遮挡物就立即停止，提高性能
-		traceRayEXT(topLevelAS,
-					gl_RayFlagsSkipClosestHitShaderEXT | gl_RayFlagsTerminateOnFirstHitEXT,
-					0xFF, 0, 0, 1,
-					shadowOrigin, tmin, lightVec, tmax, 2);
-
-		if (!shadowed) {
-			// 8. 【关键修复】应用 Lambertian 光照
-			// 最终颜色 = 材质本色 * (N dot L)
-			// 这样侧面对着光的墙会比正对着光的暗一些，增加立体感
-			hitValue = color;
-		}
+	if (gl_HitKindEXT == gl_HitKindBackFacingTriangleEXT) {
+		worldNormal = -worldNormal;
 	}
-	// 如果 NdotL <= 0，hitValue 保持为 0.0，正确表现为黑色背光面
-	*/
+	hitValue.worldNormal = worldNormal;
+	hitValue.worldPos = cacWorldPosByInterpolation(tri);
 }

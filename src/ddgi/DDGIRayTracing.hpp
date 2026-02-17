@@ -8,22 +8,22 @@ public:
         VkDevice _device,
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR* _rayTracingPipelineProperties,
         vks::VulkanDevice* _vulkanDevice,
-        vkglTF::Model* _model,
-        VkDescriptorPool _descriptorPool,
+        vkobj::Model* _model,
         AccelerationStructure* _bottomLevelAS,
         AccelerationStructure* _topLevelAS,
         StorageImage* _storageImage,
-        vks::Buffer* _geometryNodesBuffer)
+        vks::Buffer* _geometryNodesBuffer,
+        vks::Buffer* _materialDataBuffer)
     {
         device = _device;
         rayTracingPipelineProperties = _rayTracingPipelineProperties;
         vulkanDevice = _vulkanDevice;
         model = _model;
-        descriptorPool = _descriptorPool;
         bottomLevelAS = _bottomLevelAS;
         topLevelAS = _topLevelAS;
         storageImage = _storageImage;
         geometryNodesBuffer = _geometryNodesBuffer;
+        materialDataBuffer = _materialDataBuffer;
         
         vkGetBufferDeviceAddressKHR = reinterpret_cast<PFN_vkGetBufferDeviceAddressKHR>(vkGetDeviceProcAddr(device, "vkGetBufferDeviceAddressKHR"));
         vkGetRayTracingShaderGroupHandlesKHR = reinterpret_cast<PFN_vkGetRayTracingShaderGroupHandlesKHR>(vkGetDeviceProcAddr(device, "vkGetRayTracingShaderGroupHandlesKHR"));
@@ -36,6 +36,7 @@ public:
         vkDestroyPipeline(device, pipeline, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
         vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+        vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 		
         shaderBindingTables.raygen.destroy();
         shaderBindingTables.miss.destroy();
@@ -62,12 +63,13 @@ protected:
     VkDevice device{VK_NULL_HANDLE};
     VkPhysicalDeviceRayTracingPipelinePropertiesKHR*  rayTracingPipelineProperties = nullptr;
     vks::VulkanDevice* vulkanDevice = nullptr;
-    vkglTF::Model* model = nullptr;
+    vkobj::Model* model = nullptr;
     VkDescriptorPool descriptorPool{VK_NULL_HANDLE};
     AccelerationStructure* bottomLevelAS = nullptr;
     AccelerationStructure* topLevelAS = nullptr;
     StorageImage* storageImage = nullptr;
     vks::Buffer* geometryNodesBuffer = nullptr;
+    vks::Buffer* materialDataBuffer = nullptr;
     
     PFN_vkGetBufferDeviceAddressKHR vkGetBufferDeviceAddressKHR{ VK_NULL_HANDLE };
     PFN_vkGetRayTracingShaderGroupHandlesKHR vkGetRayTracingShaderGroupHandlesKHR{ VK_NULL_HANDLE };
@@ -78,7 +80,7 @@ protected:
 	std::vector<VkShaderModule> shaderModules{};
     VkPipeline pipeline{ VK_NULL_HANDLE };
     VkPipelineLayout pipelineLayout{ VK_NULL_HANDLE };
-    
+
     VkDescriptorSetLayout descriptorSetLayout{ VK_NULL_HANDLE };
     std::array<VkDescriptorSet, maxConcurrentFrames> descriptorSets{};
     std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups{};
