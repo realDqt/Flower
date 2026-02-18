@@ -4,7 +4,7 @@
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_nonuniform_qualifier : require
 
-#include "common.glsl"
+#include "Utils.glsl"
 layout(location = 0) rayPayloadInEXT RayPayload hitValue;
 hitAttributeEXT vec2 attribs;
 

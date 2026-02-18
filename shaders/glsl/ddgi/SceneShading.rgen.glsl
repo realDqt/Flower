@@ -3,7 +3,7 @@
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_shader_image_load_formatted : enable
 
-#include "common.glsl"
+#include "Utils.glsl"
 layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
 layout(binding = 1, set = 0) uniform image2D image;
 layout(binding = 2, set = 0) uniform CameraProperties{
