@@ -81,4 +81,5 @@ void main()
 	}
 	hitValue.worldNormal = worldNormal;
 	hitValue.worldPos = cacWorldPosByInterpolation(tri);
+	hitValue.hitKind = gl_HitKindEXT;
 }

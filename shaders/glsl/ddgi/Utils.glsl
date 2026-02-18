@@ -27,6 +27,16 @@ vec3 evalDiffuseBRDF(vec3 wi, vec3 wo, vec3 normal, Material mat)
     }
 }
 
+vec3 evalDiffuseBRDF(vec3 wi, vec3 wo, vec3 normal, vec3 baseColor)
+{
+    float cosalpha = dot(wo, normal);
+    if(cosalpha > 0.0){
+        return baseColor / M_PI;
+    }else{
+        return vec3(0.0);
+    }
+}
+
 vec3 toWorld(vec3 a, vec3 n)
 {
     vec3 b, c;
@@ -175,5 +185,81 @@ vec3 decodeNormal(vec3 v)
 {
     v = v * 2.0f - 1.0f;
     return v;
+}
+
+void initDirectionalLight(out DirectionalLight light)
+{
+    light.lightDir = -vec3(1.0, -1.0, 0.8);
+    light.lightIntensity = vec3(1.0, 1.0, 1.0);
+}
+
+/**
+ * Rotate vector v with quaternion q.
+ */
+vec3 QuaternionRotate(vec3 v, vec4 q)
+{
+    vec3 b = q.xyz;
+    float b2 = dot(b, b);
+    return (v * (q.w * q.w - b2) + b * (dot(v, b) * 2.f) + cross(b, v) * (q.w * 2.f));
+}
+
+/**
+ * Computes a low discrepancy spherically distributed direction on the unit sphere,
+ * for the given index in a set of samples. Each direction is unique in
+ * the set, but the set of directions is always the same.
+ */
+vec3 SphericalFibonacci(float sampleIndex, float numSamples)
+{
+    const float b = (sqrt(5.f) * 0.5f + 0.5f) - 1.f;
+    float phi = M_2PI * fract(sampleIndex * b);
+    float cosTheta = 1.f - (2.f * sampleIndex + 1.f) * (1.f / numSamples);
+    float sinTheta = sqrt(clamp(1.f - (cosTheta * cosTheta), 0.f, 1.f));
+
+    return vec3((cos(phi) * sinTheta), (sin(phi) * sinTheta), cosTheta);
+}
+
+/**
+ * Quaternion conjugate.
+ * For unit quaternions, conjugate equals inverse.
+ * Use this to create a quaternion that rotates in the opposite direction.
+ */
+vec4 QuaternionConjugate(vec4 q)
+{
+    return vec4(-q.xyz, q.w);
+}
+
+float saturate(float v)
+{
+    return clamp(v, 0.f, 1.f);
+}
+
+vec3 saturate(vec3 v)
+{
+    return vec3(saturate(v.x), saturate(v.y), saturate(v.z));
+}
+
+/**
+ * Returns the largest component of the vector.
+ */
+float MaxComponent(vec3 a)
+{
+    return max(a.x, max(a.y, a.z));
+}
+
+/**
+ * Returns either -1 or 1 based on the sign of the input value.
+ * If the input is zero, 1 is returned.
+ */
+float SignNotZero(float v)
+{
+    return (v >= 0.f) ? 1.f : -1.f;
+}
+
+/**
+ * 2-component version of RTXGISignNotZero.
+ */
+vec2 SignNotZero(vec2 v)
+{
+    return vec2(SignNotZero(v.x), SignNotZero(v.y));
 }
 #endif

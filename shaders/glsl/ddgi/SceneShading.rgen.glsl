@@ -60,10 +60,10 @@ void main()
 	if(hitValue.dis < 0.0){
 		finalColor = vec3(0.0);
 	}else{
-
-		vec3 lightDir = -vec3(1.0, -1.0, 0.8);
+		DirectionalLight light;
+		initDirectionalLight(light);
 		vec3 shadowOrigin = hitValue.worldPos + hitValue.worldNormal * 0.001;
-		traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, shadowOrigin, ray.tmin, -normalize(lightDir), ray.tmax, 0);
+		traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, shadowOrigin, ray.tmin, -normalize(light.lightDir), ray.tmax, 0);
 		if(hitValue.dis > 0.0f){
 			finalColor *= 0.0;
 		}
