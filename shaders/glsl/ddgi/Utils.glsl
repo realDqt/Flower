@@ -262,4 +262,13 @@ vec2 SignNotZero(vec2 v)
 {
     return vec2(SignNotZero(v.x), SignNotZero(v.y));
 }
+
+/**
+ * Convert Linear RGB value to Luminance
+ */
+float LinearRGBToLuminance(vec3 rgb)
+{
+    const vec3 LuminanceWeights = vec3(0.2126, 0.7152, 0.0722);
+    return dot(rgb, LuminanceWeights);
+}
 #endif
