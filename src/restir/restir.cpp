@@ -1233,10 +1233,15 @@ public:
 
 		// ray tracing shader与compute shader同步
 		// 修复：添加对 initialSampleBuffer 和当前帧 G-Buffer 图像的显式同步
-		VkMemoryBarrier bufferBarrier = {};
-		bufferBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+		VkBufferMemoryBarrier bufferBarrier = {};
+		bufferBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        bufferBarrier.buffer = initialSampleBuffer.buffer;
+        bufferBarrier.offset = 0;
+        bufferBarrier.size = initialSampleBuffer.size;
 		bufferBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT; 
-		bufferBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;  
+		bufferBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        bufferBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        bufferBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		
 		// 同步 prevDepthImage 和 prevNormalImage（temporal reuse 会读取）
 		VkImageMemoryBarrier prevDepthBarrier = {};
@@ -1275,9 +1280,9 @@ public:
 			VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, 
 			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,         
 			0,                                            
-			1, &bufferBarrier,                            
 			0, nullptr,
-			4, imageBarriers                              
+            1, &bufferBarrier,
+            4, imageBarriers
 		);
 		
 		// -----------------------------temporal reuse---------------------------------
@@ -1289,8 +1294,11 @@ public:
 		vkCmdDispatch(cmdBuffer, groupX, groupY, 1);
 		
 	   // Barrier 2: Temporal Reuse (Compute) -> Spatial Reuse (Ray Tracing)
-	   VkMemoryBarrier temporalToSpatialBarrier = {};
+	   VkBufferMemoryBarrier temporalToSpatialBarrier = {};
 	   temporalToSpatialBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+       temporalToSpatialBarrier.buffer = temporalSampleBuffer[pingPongIdx].buffer;
+       temporalToSpatialBarrier.offset = 0;
+       temporalToSpatialBarrier.size = temporalSampleBuffer[pingPongIdx].size;
 	   temporalToSpatialBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT; 
 	   temporalToSpatialBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT; 
 
@@ -1299,8 +1307,8 @@ public:
 	      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,            
 	      VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,    
 	      0,
-	      1, &temporalToSpatialBarrier,
-	      0, nullptr,
+          0, nullptr,
+          1, &temporalToSpatialBarrier,
 	      0, nullptr
 	   );
 
@@ -1317,34 +1325,6 @@ public:
 	      width,
 	      height,
 	      1);
-
-		// Copy spatialResueReservoirBuffer[1 - pingPongIdx] -> temporalReuseReservoirBuffer[pingPongIdx]
-		VkMemoryBarrier spatialToCopyBarrier = {};
-		spatialToCopyBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-		spatialToCopyBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-		spatialToCopyBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-
-		vkCmdPipelineBarrier(cmdBuffer,
-			VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			0, 1, &spatialToCopyBarrier, 0, nullptr, 0, nullptr);
-		
-		VkBufferCopy bufferCopyRegion = {};
-		bufferCopyRegion.size = width * height * sizeof(Reservoir);
-		vkCmdCopyBuffer(cmdBuffer, 
-			spatialSampleBuffer[pingPongIdx].buffer, // Src: Spatial Output
-			temporalSampleBuffer[1 - pingPongIdx].buffer,    // Dst: Next Frame's Temporal Input
-			1, &bufferCopyRegion);
-		
-		VkMemoryBarrier copyToNextFrameBarrier = {};
-		copyToNextFrameBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-		copyToNextFrameBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-		copyToNextFrameBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-		vkCmdPipelineBarrier(cmdBuffer,
-			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-			0, 1, &copyToNextFrameBarrier, 0, nullptr, 0, nullptr);
 		
 		/*
 			Copy ray tracing output to swap chain image

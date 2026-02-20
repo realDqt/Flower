@@ -1,3 +1,4 @@
+/*
 // GLSL 实现
 layout(push_constant) uniform DDGIRootConstants {
     uint volumeIndex;
@@ -10,8 +11,10 @@ layout(push_constant) uniform DDGIRootConstants {
     uint reductionInputSizeZ;
 } DDGI;
 
-
 uint GetDDGIVolumeIndex() { return DDGI.volumeIndex; }
 uint GetDDGIVolumeConstantsIndex() { return DDGI.volumeConstantsIndex; }
 uint GetDDGIVolumeResourceIndicesIndex() { return DDGI.volumeResourceIndicesIndex; }
 uvec3 GetReductionInputSize() { return uvec3(DDGI.reductionInputSizeX, DDGI.reductionInputSizeY, DDGI.reductionInputSizeZ); }
+*/
+
+uint GetDDGIVolumeIndex() { return 0; }

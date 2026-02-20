@@ -10,10 +10,10 @@ hitAttributeEXT vec2 attribs;
 
 layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
 
-layout(binding = 7, set = 0) buffer GeometryNodes {GeometryNode nodes[];}geometryNodes;
+layout(binding = 6, set = 0) buffer GeometryNodes {GeometryNode nodes[];}geometryNodes;
 
 
-layout(binding = 8, set = 0) buffer Materials {Material mats[];} materials;
+layout(binding = 7, set = 0) buffer Materials {Material mats[];} materials;
 
 
 Triangle unpackTriangle(uint index){
