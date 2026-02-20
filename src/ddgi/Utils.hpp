@@ -16,6 +16,7 @@ inline std::string getShadersPath()
 inline DDGIVolumeDescGPU* getGlobalDDGIVolumeDescGPU()
 {
     static DDGIVolumeDescGPU ddgiVolumeDescGPU{};
+    ddgiVolumeDescGPU.probeCounts = glm::ivec3(8, 8, 8);
     return &ddgiVolumeDescGPU;
 }
 
@@ -107,7 +108,38 @@ inline VkFormat getFormatByType(const EDDGIVolumeTextureType& textureType)
     }
 }
 
-inline void createDDGIVolumeTexture(const EDDGIVolumeTextureType& textureType, vks::Texture& outVolumeTexture, vks::VulkanDevice* device)
+inline float getInitialValueByType(const EDDGIVolumeTextureType& textureType)
+{
+    return 0.f;
+}
+
+inline void clearAndTransitionImage(
+        vks::VulkanDevice* device,
+        VkQueue queue,
+        vks::Texture& texture,
+        VkImageLayout targetLayout,
+        float clearValue = 0.0f)
+{
+    // 1. 创建一次性命令缓冲
+    VkCommandBuffer cmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+
+    VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, texture.layerCount};
+
+    // --- 步骤 1: UNDEFINED -> TRANSFER_DST_OPTIMAL ---
+    vks::tools::setImageLayout(cmd, texture.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, range, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+    // --- 步骤 2: 执行清除 (Clear) ---
+    VkClearColorValue cv = { {clearValue, clearValue, clearValue, clearValue} };
+    vkCmdClearColorImage(cmd, texture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &cv, 1, &range);
+
+    // --- 步骤 3: TRANSFER_DST_OPTIMAL -> 目标布局 (如 SHADER_READ_ONLY 或 GENERAL) ---
+    vks::tools::setImageLayout(cmd, texture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, targetLayout, range, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR);
+
+    // 提交并销毁临时命令缓冲
+    device->flushCommandBuffer(cmd, queue);
+}
+
+inline void createDDGIVolumeTexture(const EDDGIVolumeTextureType& textureType, vks::Texture& outVolumeTexture, vks::VulkanDevice* device, VkQueue queue)
 {
     auto pDDGIVolumeDescGPU = getGlobalDDGIVolumeDescGPU();
     uint32_t volumeTextureWidth, volumeTextureHeight, volumeTextureDepth;
@@ -136,7 +168,7 @@ inline void createDDGIVolumeTexture(const EDDGIVolumeTextureType& textureType, v
     imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
     // 注意：必须包含 STORAGE 位以便计算着色器写入，包含 SAMPLED 位以便后续采样
     imageCI.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    imageCI.initialLayout = getInitialLayoutByType(textureType);
+    imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
     VK_CHECK_RESULT(vkCreateImage(device->logicalDevice, &imageCI, nullptr, &outVolumeTexture.image));
 
@@ -169,6 +201,8 @@ inline void createDDGIVolumeTexture(const EDDGIVolumeTextureType& textureType, v
     samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 
     VK_CHECK_RESULT(vkCreateSampler(device->logicalDevice, &samplerCI, nullptr, &outVolumeTexture.sampler));
+
+    clearAndTransitionImage(device, queue, outVolumeTexture, getInitialLayoutByType(textureType), getInitialValueByType(textureType));
 }
 
 

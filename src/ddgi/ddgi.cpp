@@ -6,6 +6,7 @@
  * This code is licensed under the MIT license (MIT) (http://opensource.org/licenses/MIT)
  */
 #pragma once
+#include "ProbeTraceRayTracing.hpp"
 #include "SceneShadingRayTracing.hpp"
 
 class CornellBox : public VulkanRaytracingSample
@@ -20,6 +21,13 @@ public:
 	vks::Buffer transformBuffer;
 	vks::Buffer geometryNodesBuffer;
     vks::Buffer materialDataBuffer;
+    vks::Buffer ddgiVolumes;
+
+    vks::Texture probeIrradiance;
+    vks::Texture probeDistance;
+    vks::Texture probeData;
+    vks::Texture rayData;
+
 
     vkobj::Model cornell;
     std::vector<std::string> filenames;
@@ -28,6 +36,7 @@ public:
 	VkPhysicalDeviceDescriptorIndexingFeaturesEXT physicalDeviceDescriptorIndexingFeatures{};
 
 	std::unique_ptr<SceneShadingRayTracing> sceneShadingRayTracing = nullptr;
+    std::unique_ptr<ProbeTraceRayTracing> probeTraceRayTracing = nullptr;
 
     CornellBox() : VulkanRaytracingSample()
     {
@@ -428,6 +437,36 @@ public:
         cornell.loadFromFile(filenames, materials, vulkanDevice, queue);
     }
 
+    void createDDGIVolumeTextures()
+    {
+        createDDGIVolumeTexture(EDDGIVolumeTextureType::Irradiance, probeIrradiance, vulkanDevice, queue);
+        createDDGIVolumeTexture(EDDGIVolumeTextureType::Distance, probeDistance, vulkanDevice, queue);
+        createDDGIVolumeTexture(EDDGIVolumeTextureType::Data, probeData, vulkanDevice, queue);
+        createDDGIVolumeTexture(EDDGIVolumeTextureType::RayData, rayData, vulkanDevice, queue);
+    }
+
+    void createDDGIVolumes()
+    {
+        vks::Buffer stagingBuffer;
+
+        VK_CHECK_RESULT(vulkanDevice->createBuffer(
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                &stagingBuffer,
+                sizeof(DDGIVolumeDescGPUPacked),
+                getGlobalDDGIVolumeDescGPUPacked()));
+
+        VK_CHECK_RESULT(vulkanDevice->createBuffer(
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                &ddgiVolumes,
+                sizeof(DDGIVolumeDescGPUPacked)));
+
+        vulkanDevice->copyBuffer(&stagingBuffer, &ddgiVolumes, queue);
+
+        stagingBuffer.destroy();
+    }
+
 	void prepare()
 	{
 		VulkanRaytracingSample::prepare();
@@ -439,6 +478,11 @@ public:
 		createTopLevelAccelerationStructure();
 		createStorageImage(swapChain.colorFormat, { width, height, 1 });
 
+        createDDGIVolumeTextures();
+        createDDGIVolumes();
+
+        probeTraceRayTracing = std::make_unique<ProbeTraceRayTracing>(device, &rayTracingPipelineProperties, vulkanDevice, &cornell, &bottomLevelAS, &topLevelAS, &storageImage, &geometryNodesBuffer, &materialDataBuffer, &probeIrradiance, &probeDistance, &probeData, &rayData, &ddgiVolumes);
+        probeTraceRayTracing->prepare();
 		sceneShadingRayTracing = std::make_unique<SceneShadingRayTracing>(device, &rayTracingPipelineProperties, vulkanDevice, &cornell, &bottomLevelAS, &topLevelAS, &storageImage, &geometryNodesBuffer, &materialDataBuffer);
 		sceneShadingRayTracing->prepare();
 		prepared = true;
@@ -459,6 +503,8 @@ public:
 
 		VK_CHECK_RESULT(vkBeginCommandBuffer(cmdBuffer, &cmdBufInfo));
 
+
+        probeTraceRayTracing->recordCommandBuffer(cmdBuffer, currentBuffer);
 		sceneShadingRayTracing->recordCommandBuffer(cmdBuffer, currentBuffer);
 		/*
 			Copy ray tracing output to swap chain image

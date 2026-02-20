@@ -286,6 +286,10 @@ private:
         }
     }
 
+    void createUniformBuffer() override{
+
+    }
+
     vks::Texture* pProbeIrradiance = nullptr;
     vks::Texture* pProbeDistance = nullptr;
     vks::Texture* pProbeData = nullptr;
