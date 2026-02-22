@@ -79,7 +79,7 @@ vec3 EvalDiffuseLighting(vec3 posW, vec3 normW, vec3 baseColor, vec3 wo, Directi
  * When probe relocation is enabled, offsets are loaded from the probe data
  * Texture2D and used to adjust the final world position.
  */
-vec3 DDGIGetProbeWorldPositionRelocation(ivec3 probeCoords, DDGIVolumeDescGPU volume)
+vec3 DDGIGetProbeWorldPositionWithRelocation(ivec3 probeCoords, DDGIVolumeDescGPU volume)
 {
     // Get the probe's world-space position
     vec3 probeWorldPosition = DDGIGetProbeWorldPosition(probeCoords, volume);
@@ -139,7 +139,7 @@ vec3 DDGIGetVolumeIrradiance(
         if (probeState == DDGI_PROBE_STATE_INACTIVE) continue;
 
         // Get the adjacent probe's world position
-        vec3 adjacentProbeWorldPosition = DDGIGetProbeWorldPositionRelocation(adjacentProbeCoords, volume); // TODO relocation
+        vec3 adjacentProbeWorldPosition = DDGIGetProbeWorldPositionWithRelocation(adjacentProbeCoords, volume); // TODO relocation
 
         // Compute the distance and direction from the (biased and non-biased) shading point and the adjacent probe
         vec3 worldPosToAdjProbe = normalize(adjacentProbeWorldPosition - worldPosition);
@@ -288,8 +288,8 @@ void main() {
         // TODO
     }
 
-    DirectionalLight light;
-    initDirectionalLight(light);
+
+    DirectionalLight light = getGlobalDirectionalLight();
     vec3 diffuse = EvalDiffuseLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.mat.baseColor.rgb, -ray.direction, light);
 
     vec3 irradiance = vec3(0.f);

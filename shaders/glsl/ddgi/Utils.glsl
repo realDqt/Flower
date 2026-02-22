@@ -30,11 +30,7 @@ vec3 evalDiffuseBRDF(vec3 wi, vec3 wo, vec3 normal, Material mat)
 vec3 evalDiffuseBRDF(vec3 wi, vec3 wo, vec3 normal, vec3 baseColor)
 {
     float cosalpha = dot(wo, normal);
-    if(cosalpha > 0.0){
-        return baseColor / M_PI;
-    }else{
-        return vec3(0.0);
-    }
+    return baseColor / M_PI * max(cosalpha, 0.f);
 }
 
 vec3 toWorld(vec3 a, vec3 n)
@@ -187,10 +183,12 @@ vec3 decodeNormal(vec3 v)
     return v;
 }
 
-void initDirectionalLight(out DirectionalLight light)
+DirectionalLight getGlobalDirectionalLight()
 {
+    DirectionalLight light;
     light.lightDir = -vec3(1.0, -1.0, 0.8);
     light.lightIntensity = vec3(1.0, 1.0, 1.0);
+    return light;
 }
 
 /**

@@ -369,6 +369,7 @@ public:
 	{
 		sceneShadingRayTracing->uniformData.projInverse = glm::inverse(camera.matrices.perspective);
 		sceneShadingRayTracing->uniformData.viewInverse = glm::inverse(camera.matrices.view);
+        sceneShadingRayTracing->uniformData.position = camera.position;
 		// This value is used to accumulate multiple frames into the finale picture
 		// It's required as ray tracing needs to do multiple passes for transparency
 		// In this sample we use noise offset by this frame index to shoot rays for transparency into different directions
@@ -492,7 +493,7 @@ public:
         probeBlendIrradianceCompute->prepare();
         probeBlendDistanceCompute = std::make_unique<ProbeBlendDistanceCompute>(device, pipelineCache, &ddgiVolumes, &probeDistance, &rayData);
         probeBlendDistanceCompute->prepare();
-		sceneShadingRayTracing = std::make_unique<SceneShadingRayTracing>(device, &rayTracingPipelineProperties, vulkanDevice, &cornell, &bottomLevelAS, &topLevelAS, &storageImage, &geometryNodesBuffer, &materialDataBuffer);
+		sceneShadingRayTracing = std::make_unique<SceneShadingRayTracing>(device, &rayTracingPipelineProperties, vulkanDevice, &cornell, &bottomLevelAS, &topLevelAS, &storageImage, &geometryNodesBuffer, &materialDataBuffer, &ddgiVolumes, &probeIrradiance, &probeDistance);
 		sceneShadingRayTracing->prepare();
 		prepared = true;
 	}

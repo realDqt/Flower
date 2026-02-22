@@ -7,6 +7,7 @@ public:
 	struct UniformData {
 		glm::mat4 viewInverse;
 		glm::mat4 projInverse;
+        glm::vec3 position;
 		uint32_t frame{ 0 };
 	} uniformData;
 	std::array<vks::Buffer, maxConcurrentFrames> uniformBuffers;
@@ -20,7 +21,10 @@ public:
 		AccelerationStructure* _topLevelAS,
 		StorageImage* _storageImage,
 		vks::Buffer* _geometryNodesBuffer,
-        vks::Buffer* _materialDataBuffer): DDGIRayTracing(
+        vks::Buffer* _materialDataBuffer,
+        vks::Buffer* _pDDGIVolumes,
+        vks::Texture* _pProbeIrradiance,
+        vks::Texture* _pProbeDistance): DDGIRayTracing(
 			_device,
 			_rayTracingPipelineProperties,
 			_vulkanDevice,
@@ -32,6 +36,9 @@ public:
             _materialDataBuffer
 			)
 	{
+        pDDGIVolumes = _pDDGIVolumes;
+        pProbeIrradiance = _pProbeIrradiance;
+        pProbeDistance = _pProbeDistance;
 	}
 
 	void recordCommandBuffer(VkCommandBuffer cmdBuffer, uint32_t currentBuffer) override
@@ -94,6 +101,12 @@ private:
                 vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR | VK_SHADER_STAGE_ANY_HIT_BIT_KHR | VK_SHADER_STAGE_RAYGEN_BIT_KHR, 3),
                 // Binding 4: Base Colors buffer
                 vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 4),
+                // Binding 5: DDGI Volume
+                vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 5),
+                // Binding 6: Probe Irradiance
+                vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_RAYGEN_BIT_KHR , 6),
+                // Binding 7: Probe Distance
+                vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 7),
         };
 
         VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
@@ -168,7 +181,8 @@ private:
                 { VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxConcurrentFrames },
                 { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
                 { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
-                { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames * 2 }
+                { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames * 3 },
+                { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, maxConcurrentFrames * 2 }
         };
         VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, maxConcurrentFrames);
         VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolCreateInfo, nullptr, &descriptorPool));
@@ -199,6 +213,8 @@ private:
             VkDescriptorImageInfo storageImageDescriptor{ VK_NULL_HANDLE, storageImage->view, VK_IMAGE_LAYOUT_GENERAL };
 
 
+            pProbeIrradiance->updateDescriptor();
+            pProbeDistance->updateDescriptor();
             std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
                     // Binding 0: Top level acceleration structure
                     accelerationStructureWrite,
@@ -210,6 +226,12 @@ private:
                     vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &geometryNodesBuffer->descriptor),
                     // Binding 4: Material Data
                     vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &materialDataBuffer->descriptor),
+                    // Binding 5: DDGI Volumes
+                    vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5, &pDDGIVolumes->descriptor),
+                    // Binding 6: Probe Irradiance
+                    vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 6, &pProbeIrradiance->descriptor),
+                    // Binding 7: Probe Distance
+                    vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 7, &pProbeDistance->descriptor),
             };
             vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, VK_NULL_HANDLE);
         }
@@ -222,4 +244,8 @@ private:
 			VK_CHECK_RESULT(buffer.map());
 		}
 	}
+
+    vks::Buffer* pDDGIVolumes = nullptr;
+    vks::Texture* pProbeIrradiance = nullptr;
+    vks::Texture* pProbeDistance = nullptr;
 };
