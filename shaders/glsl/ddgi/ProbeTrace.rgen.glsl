@@ -290,6 +290,9 @@ void main() {
 
 
     DirectionalLight light = getGlobalDirectionalLight();
+    float hitDis = hitValue.dis;
+    vec3 hitBaseColor = hitValue.mat.baseColor.rgb;
+
     vec3 diffuse = EvalDiffuseLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.mat.baseColor.rgb, -ray.direction, light);
 
     vec3 irradiance = vec3(0.f);
@@ -316,6 +319,6 @@ void main() {
     float maxAlbedo = 0.9f;
 
     // Store the final ray radiance and hit distance
-    vec3 radiance = diffuse + ((min(hitValue.mat.baseColor.rgb, vec3(maxAlbedo, maxAlbedo, maxAlbedo)) / M_PI) * irradiance);
-    DDGIStoreProbeRayFrontfaceHit(outputCoords, volume, saturate(radiance), hitValue.dis);
+    vec3 radiance = diffuse + ((min(hitBaseColor, vec3(maxAlbedo, maxAlbedo, maxAlbedo)) / M_PI) * irradiance);
+    DDGIStoreProbeRayFrontfaceHit(outputCoords, volume, saturate(radiance), hitDis);
 }

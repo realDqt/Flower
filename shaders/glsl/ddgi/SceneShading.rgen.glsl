@@ -275,6 +275,7 @@ vec3 evalIndirectLighting(vec3 posW, vec3 normW, vec3 baseColor, vec3 wo)
 	vec3 irradiance = vec3(0.f);
 	if(blendWeight > 0)
 	{
+		irradiance = vec3(1.f);
 		// Get irradiance for the world-space position in the volume
 		irradiance += DDGIGetVolumeIrradiance(
 			posW,
@@ -303,9 +304,12 @@ void main()
 	if(hitValue.dis < 0.0){
 		finalColor = vec3(0.0);
 	}else{
+		vec3 hitBaseColor = hitValue.mat.baseColor.rgb;
+		vec3 hitWorldPos = hitValue.worldPos;
+		vec3 hitWorldNormal = hitValue.worldNormal;
 
-		vec3 directLighting = evalDirectLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.mat.baseColor.rgb, -ray.direction);
-		vec3 indirectLighting = evalIndirectLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.mat.baseColor.rgb, -ray.direction);
+		vec3 directLighting = evalDirectLighting(hitWorldPos, hitWorldNormal, hitBaseColor, -ray.direction);
+		vec3 indirectLighting = evalIndirectLighting(hitWorldPos, hitWorldNormal, hitBaseColor, -ray.direction);
 		finalColor = directLighting + indirectLighting;
 	}
 
