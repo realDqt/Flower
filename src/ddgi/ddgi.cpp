@@ -8,6 +8,7 @@
 #pragma once
 #include "ProbeTraceRayTracing.hpp"
 #include "ProbeBlendIrradianceCompute.hpp"
+#include "ProbeBlendDistanceCompute.hpp"
 #include "SceneShadingRayTracing.hpp"
 
 class CornellBox : public VulkanRaytracingSample
@@ -39,6 +40,7 @@ public:
 	std::unique_ptr<SceneShadingRayTracing> sceneShadingRayTracing = nullptr;
     std::unique_ptr<ProbeTraceRayTracing> probeTraceRayTracing = nullptr;
     std::unique_ptr<ProbeBlendIrradianceCompute> probeBlendIrradianceCompute = nullptr;
+    std::unique_ptr<ProbeBlendDistanceCompute> probeBlendDistanceCompute = nullptr;
 
 
     CornellBox() : VulkanRaytracingSample()
@@ -488,6 +490,8 @@ public:
         probeTraceRayTracing->prepare();
         probeBlendIrradianceCompute = std::make_unique<ProbeBlendIrradianceCompute>(device, pipelineCache, &ddgiVolumes, &probeIrradiance, &rayData);
         probeBlendIrradianceCompute->prepare();
+        probeBlendDistanceCompute = std::make_unique<ProbeBlendDistanceCompute>(device, pipelineCache, &ddgiVolumes, &probeDistance, &rayData);
+        probeBlendDistanceCompute->prepare();
 		sceneShadingRayTracing = std::make_unique<SceneShadingRayTracing>(device, &rayTracingPipelineProperties, vulkanDevice, &cornell, &bottomLevelAS, &topLevelAS, &storageImage, &geometryNodesBuffer, &materialDataBuffer);
 		sceneShadingRayTracing->prepare();
 		prepared = true;
@@ -511,6 +515,7 @@ public:
 
         probeTraceRayTracing->recordCommandBuffer(cmdBuffer, currentBuffer);
         probeBlendIrradianceCompute->recordCommandBuffer(cmdBuffer, currentBuffer);
+        probeBlendDistanceCompute->recordCommandBuffer(cmdBuffer, currentBuffer);
 		sceneShadingRayTracing->recordCommandBuffer(cmdBuffer, currentBuffer);
 		/*
 			Copy ray tracing output to swap chain image
