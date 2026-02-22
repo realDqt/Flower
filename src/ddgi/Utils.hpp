@@ -16,7 +16,45 @@ inline std::string getShadersPath()
 inline DDGIVolumeDescGPU* getGlobalDDGIVolumeDescGPU()
 {
     static DDGIVolumeDescGPU ddgiVolumeDescGPU{};
-    ddgiVolumeDescGPU.probeCounts = glm::ivec3(8, 8, 8);
+    ddgiVolumeDescGPU.origin = glm::vec3(-0.25, 0.25, 0.25);
+    ddgiVolumeDescGPU.rotation = glm::vec4(0, 0, 0, 1);
+    ddgiVolumeDescGPU.probeRayRotation = glm::vec4(0, 0, 0, 1);
+    ddgiVolumeDescGPU.movementType = 0;
+
+    ddgiVolumeDescGPU.probeSpacing = glm::vec3(0.06, 0.06, 0.06);
+    ddgiVolumeDescGPU.probeCounts = glm::ivec3(10, 10, 10);
+    
+    ddgiVolumeDescGPU.probeNumRays = 256;
+    ddgiVolumeDescGPU.probeNumIrradianceInteriorTexels = DDGI_PROBE_IRRADIANCE_SIDE;
+    ddgiVolumeDescGPU.probeNumDistanceInteriorTexels = DDGI_PROBE_DEPTH_SIDE;
+
+    ddgiVolumeDescGPU.probeHysteresis = 0.97f;
+    ddgiVolumeDescGPU.probeMaxRayDistance = 1e27f;
+    ddgiVolumeDescGPU.probeNormalBias = 0.002f;
+    ddgiVolumeDescGPU.probeViewBias = 0.01f;
+    ddgiVolumeDescGPU.probeDistanceExponent = 50.f;
+    ddgiVolumeDescGPU.probeIrradianceEncodingGamma = 5.f;
+
+    ddgiVolumeDescGPU.probeIrradianceThreshold = 0.2f;
+    ddgiVolumeDescGPU.probeBrightnessThreshold = 1.0f;
+    ddgiVolumeDescGPU.probeRandomRayBackfaceThreshold = 0.1f;
+
+    ddgiVolumeDescGPU.probeFixedRayBackfaceThreshold = 0.25f;
+    ddgiVolumeDescGPU.probeMinFrontfaceDistance = 1.0f;
+    
+    ddgiVolumeDescGPU.probeScrollOffsets = glm::ivec3(0, 0, 0);
+    for(int i = 0; i < 3; ++i)
+    {
+        ddgiVolumeDescGPU.probeScrollClear[i] = false;
+        ddgiVolumeDescGPU.probeScrollDirections[i] = false;
+    }
+
+    ddgiVolumeDescGPU.probeRayDataFormat = 6;
+    ddgiVolumeDescGPU.probeIrradianceFormat = 6;
+
+    ddgiVolumeDescGPU.probeRelocationEnabled = false;
+    ddgiVolumeDescGPU.probeClassificationEnabled = false;
+    ddgiVolumeDescGPU.probeVariabilityEnabled = false;
     return &ddgiVolumeDescGPU;
 }
 

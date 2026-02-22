@@ -489,10 +489,13 @@ public:
 
         probeTraceRayTracing = std::make_unique<ProbeTraceRayTracing>(device, &rayTracingPipelineProperties, vulkanDevice, &cornell, &bottomLevelAS, &topLevelAS, &storageImage, &geometryNodesBuffer, &materialDataBuffer, &probeIrradiance, &probeDistance, &probeData, &rayData, &ddgiVolumes);
         probeTraceRayTracing->prepare();
+
         probeBlendIrradianceCompute = std::make_unique<ProbeBlendIrradianceCompute>(device, pipelineCache, &ddgiVolumes, &probeIrradiance, &rayData);
         probeBlendIrradianceCompute->prepare();
+
         probeBlendDistanceCompute = std::make_unique<ProbeBlendDistanceCompute>(device, pipelineCache, &ddgiVolumes, &probeDistance, &rayData);
         probeBlendDistanceCompute->prepare();
+
 		sceneShadingRayTracing = std::make_unique<SceneShadingRayTracing>(device, &rayTracingPipelineProperties, vulkanDevice, &cornell, &bottomLevelAS, &topLevelAS, &storageImage, &geometryNodesBuffer, &materialDataBuffer, &ddgiVolumes, &probeIrradiance, &probeDistance);
 		sceneShadingRayTracing->prepare();
 		prepared = true;

@@ -285,8 +285,8 @@ vec3 evalIndirectLighting(vec3 posW, vec3 normW, vec3 baseColor, vec3 wo)
 		irradiance *= blendWeight;
 	};
 
-	vec3 brdf = evalDiffuseBRDF(vec3(1.f, 0.f, 0.f), wo, normW, baseColor);
-	return max(irradiance * brdf, vec3(0.f));
+	vec3 brdf = baseColor / M_PI;
+	return irradiance * brdf;
 }
 
 
