@@ -87,7 +87,7 @@ protected:
     ShaderBindingTables shaderBindingTables;
 
 
-	VkPipelineShaderStageCreateInfo loadShader(VkDevice device, std::string fileName, VkShaderStageFlagBits stage)
+	VkPipelineShaderStageCreateInfo loadShader(std::string fileName, VkShaderStageFlagBits stage)
 	{
 		VkPipelineShaderStageCreateInfo shaderStage{
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,

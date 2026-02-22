@@ -29,3 +29,8 @@ enum class EDDGIVolumeTextureType
     VariabilityAverage,
     Count
 };
+
+#define DDGI_PROBE_DEPTH_WITH_BORDER_SIDE 18
+#define DDGI_PROBE_DEPTH_SIDE 16
+#define DDGI_PROBE_IRRADIANCE_WITH_BORDER_SIDE 10
+#define DDGI_PROBE_IRRADIANCE_SIDE 8

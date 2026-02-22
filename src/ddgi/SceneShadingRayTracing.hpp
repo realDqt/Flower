@@ -112,7 +112,7 @@ private:
 
         // Ray generation group
         {
-            shaderStages.push_back(loadShader(device, getShadersPath() + "ddgi/SceneShading.rgen.spv", VK_SHADER_STAGE_RAYGEN_BIT_KHR));
+            shaderStages.push_back(loadShader(getShadersPath() + "ddgi/SceneShading.rgen.spv", VK_SHADER_STAGE_RAYGEN_BIT_KHR));
             // Pass recursion depth for reflections to ray generation shader via specialization constant
             shaderStages.back().pSpecializationInfo = &specializationInfo;
             VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
@@ -127,7 +127,7 @@ private:
 
         // Miss group
         {
-            shaderStages.push_back(loadShader(device, getShadersPath() + "ddgi/Miss.rmiss.spv", VK_SHADER_STAGE_MISS_BIT_KHR));
+            shaderStages.push_back(loadShader(getShadersPath() + "ddgi/Miss.rmiss.spv", VK_SHADER_STAGE_MISS_BIT_KHR));
             VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
             shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
             shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
@@ -140,7 +140,7 @@ private:
 
         // Closest hit group
         {
-            shaderStages.push_back(loadShader(device, getShadersPath() + "ddgi/SceneShading.rchit.spv", VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR));
+            shaderStages.push_back(loadShader(getShadersPath() + "ddgi/SceneShading.rchit.spv", VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR));
             VkRayTracingShaderGroupCreateInfoKHR shaderGroup{};
             shaderGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
             shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
