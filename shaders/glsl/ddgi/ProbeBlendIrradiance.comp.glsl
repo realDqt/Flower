@@ -192,6 +192,7 @@ void main()
             // TODO
         }
 
+        //result = vec4(1.0, 0.0, 0.0, 0.0); //no problem
         imageStore(ProbeIrradiance, ivec3(DispatchThreadID), result);
         return;
     }

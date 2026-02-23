@@ -187,7 +187,7 @@ DirectionalLight getGlobalDirectionalLight()
 {
     DirectionalLight light;
     light.lightDir = -vec3(1.0, -1.0, 0.8);
-    light.lightIntensity = vec3(1.0, 1.0, 1.0);
+    light.lightIntensity = vec3(6.0, 6.0, 6.0);
     return light;
 }
 

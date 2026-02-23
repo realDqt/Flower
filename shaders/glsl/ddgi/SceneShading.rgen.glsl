@@ -25,6 +25,7 @@ layout(binding = 7, set = 0) uniform sampler2DArray ProbeDistance;
 
 
 layout(location = 0) rayPayloadEXT RayPayload hitValue;
+layout(location = 1) rayPayloadEXT bool shadowed;
 
 uint getSeed()
 {
@@ -62,9 +63,9 @@ bool isVisible(vec3 posW, vec3 normW, DirectionalLight light)
 	ray.direction = -light.lightDir;
 	ray.tmin = 0.001f;
 	ray.tmax = 10000.0f;
-	hitValue.dis = 1.f;
-	traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
-	return hitValue.dis < 0.f;
+	shadowed = true;
+	traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT, 0xff, 0, 0, 1, ray.origin, ray.tmin, ray.direction, ray.tmax, 1);
+	return !shadowed;
 }
 
 vec3 evalDiffuseLighting(vec3 posW, vec3 normW, vec3 baseColor, vec3 wo, DirectionalLight light)
@@ -275,7 +276,6 @@ vec3 evalIndirectLighting(vec3 posW, vec3 normW, vec3 baseColor, vec3 wo)
 	vec3 irradiance = vec3(0.f);
 	if(blendWeight > 0)
 	{
-		irradiance = vec3(1.f);
 		// Get irradiance for the world-space position in the volume
 		irradiance += DDGIGetVolumeIrradiance(
 			posW,
@@ -284,6 +284,7 @@ vec3 evalIndirectLighting(vec3 posW, vec3 normW, vec3 baseColor, vec3 wo)
 			volume);
 
 		irradiance *= blendWeight;
+
 	};
 
 	vec3 brdf = baseColor / M_PI;
@@ -304,13 +305,10 @@ void main()
 	if(hitValue.dis < 0.0){
 		finalColor = vec3(0.0);
 	}else{
-		vec3 hitBaseColor = hitValue.mat.baseColor.rgb;
-		vec3 hitWorldPos = hitValue.worldPos;
-		vec3 hitWorldNormal = hitValue.worldNormal;
 
-		vec3 directLighting = evalDirectLighting(hitWorldPos, hitWorldNormal, hitBaseColor, -ray.direction);
-		vec3 indirectLighting = evalIndirectLighting(hitWorldPos, hitWorldNormal, hitBaseColor, -ray.direction);
-		finalColor = directLighting + indirectLighting;
+		vec3 directLighting = evalDirectLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.mat.baseColor.rgb, -ray.direction);
+		vec3 indirectLighting = evalIndirectLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.mat.baseColor.rgb, -ray.direction);
+		finalColor = indirectLighting;
 	}
 
 	imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.0f));

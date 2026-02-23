@@ -101,7 +101,7 @@ public:
         VK_CHECK_RESULT(vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout));
 
         VkComputePipelineCreateInfo computePipelineCreateInfo = vks::initializers::computePipelineCreateInfo(pipelineLayout, 0);
-        computePipelineCreateInfo.stage = loadShader(getShadersPath() + "ddgi/ProbeBlendIrradiance.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
+        computePipelineCreateInfo.stage = loadShader(getShadersPath() + "ddgi/ProbeBlendDistance.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
         VK_CHECK_RESULT(vkCreateComputePipelines(device, pipelineCache, 1, &computePipelineCreateInfo, nullptr, &pipeline));
     }
 

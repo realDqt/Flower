@@ -41,29 +41,6 @@ public:
                 VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR
                 );
         pProbeIrradiance->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-        /*
-        // ray data
-        subresourceRange.layerCount = pRayData->layerCount;
-        VkImageMemoryBarrier rayDataBarrier{};
-        rayDataBarrier.subresourceRange = subresourceRange;
-        rayDataBarrier.image = pRayData->image;
-        rayDataBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        rayDataBarrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        rayDataBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-        rayDataBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-        rayDataBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        rayDataBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-
-        vkCmdPipelineBarrier(
-                cmdBuffer,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-                0,
-                0, nullptr,
-                0, nullptr,
-                1, &rayDataBarrier);
-                */
     }
 
     void prepare() override{

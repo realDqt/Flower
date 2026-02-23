@@ -16,13 +16,13 @@ inline std::string getShadersPath()
 inline DDGIVolumeDescGPU* getGlobalDDGIVolumeDescGPU()
 {
     static DDGIVolumeDescGPU ddgiVolumeDescGPU{};
-    ddgiVolumeDescGPU.origin = glm::vec3(-0.25, 0.25, 0.25);
+    ddgiVolumeDescGPU.origin = -glm::vec3(-0.25, 0.25, 0.25);
     ddgiVolumeDescGPU.rotation = glm::vec4(0, 0, 0, 1);
     ddgiVolumeDescGPU.probeRayRotation = glm::vec4(0, 0, 0, 1);
     ddgiVolumeDescGPU.movementType = 0;
 
-    ddgiVolumeDescGPU.probeSpacing = glm::vec3(0.06, 0.06, 0.06);
-    ddgiVolumeDescGPU.probeCounts = glm::ivec3(10, 10, 10);
+    ddgiVolumeDescGPU.probeSpacing = glm::vec3(0.08);
+    ddgiVolumeDescGPU.probeCounts = glm::ivec3(8, 8, 8);
     
     ddgiVolumeDescGPU.probeNumRays = 256;
     ddgiVolumeDescGPU.probeNumIrradianceInteriorTexels = DDGI_PROBE_IRRADIANCE_SIDE;
@@ -148,7 +148,13 @@ inline VkFormat getFormatByType(const EDDGIVolumeTextureType& textureType)
 
 inline float getInitialValueByType(const EDDGIVolumeTextureType& textureType)
 {
-    return 0.f;
+    switch (textureType) {
+        case EDDGIVolumeTextureType::Irradiance:
+        case EDDGIVolumeTextureType::Distance:
+            return 0.f;
+        default:
+            return 0.f;
+    }
 }
 
 inline void clearAndTransitionImage(

@@ -21,7 +21,7 @@ float DDGILoadProbeState(int probeIndex, DDGIVolumeDescGPU volume)
     if (volume.probeClassificationEnabled)
     {
         // TODO
-    /*
+        /*
         // Get the probe's texel coordinates in the Probe Data texture
         uvec3 probeDataCoords = DDGIGetProbeTexelCoords(probeIndex, volume);
 

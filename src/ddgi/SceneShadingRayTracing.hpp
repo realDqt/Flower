@@ -56,6 +56,9 @@ public:
 			width,
 			height,
 			1);
+
+        // probe irradiance/distance VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL -> VK_IMAGE_LAYOUT_SHADER_RAED_ONLY_OPTIMAL
+        // ray data VK_IMAGE_LAYOUT_GENERAL -> VK_IMAGE_LAYOUT_GENERAL read
 	}
 	
 	~SceneShadingRayTracing() override
@@ -77,13 +80,13 @@ private:
         VK_CHECK_RESULT(vkGetRayTracingShaderGroupHandlesKHR(device, pipeline, 0, groupCount, sbtSize, shaderHandleStorage.data()));
 
         createShaderBindingTable(shaderBindingTables.raygen, 1);
-        createShaderBindingTable(shaderBindingTables.miss, 1);
+        createShaderBindingTable(shaderBindingTables.miss, 2);
         createShaderBindingTable(shaderBindingTables.hit, 1);
 
         // Copy handles
         memcpy(shaderBindingTables.raygen.mapped, shaderHandleStorage.data(), handleSize);
-        memcpy(shaderBindingTables.miss.mapped, shaderHandleStorage.data() + handleSizeAligned, handleSize);
-        memcpy(shaderBindingTables.hit.mapped, shaderHandleStorage.data() + handleSizeAligned * 2, handleSize);
+        memcpy(shaderBindingTables.miss.mapped, shaderHandleStorage.data() + handleSizeAligned, handleSize * 2);
+        memcpy(shaderBindingTables.hit.mapped, shaderHandleStorage.data() + handleSizeAligned * 3, handleSize);
     }
 
 
@@ -148,6 +151,10 @@ private:
             shaderGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
             shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
             shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+            shaderGroups.push_back(shaderGroup);
+
+            shaderStages.push_back(loadShader(getShadersPath() + "ddgi/Shadow.rmiss.spv", VK_SHADER_STAGE_MISS_BIT_KHR));
+            shaderGroup.generalShader = static_cast<uint32_t>(shaderStages.size()) - 1;
             shaderGroups.push_back(shaderGroup);
         }
 

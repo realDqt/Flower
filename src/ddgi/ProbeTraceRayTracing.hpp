@@ -128,13 +128,13 @@ private:
         VK_CHECK_RESULT(vkGetRayTracingShaderGroupHandlesKHR(device, pipeline, 0, groupCount, sbtSize, shaderHandleStorage.data()));
 
         createShaderBindingTable(shaderBindingTables.raygen, 1);
-        createShaderBindingTable(shaderBindingTables.miss, 1);
+        createShaderBindingTable(shaderBindingTables.miss, 2);
         createShaderBindingTable(shaderBindingTables.hit, 1);
 
         // Copy handles
         memcpy(shaderBindingTables.raygen.mapped, shaderHandleStorage.data(), handleSize);
-        memcpy(shaderBindingTables.miss.mapped, shaderHandleStorage.data() + handleSizeAligned, handleSize);
-        memcpy(shaderBindingTables.hit.mapped, shaderHandleStorage.data() + handleSizeAligned * 2, handleSize);
+        memcpy(shaderBindingTables.miss.mapped, shaderHandleStorage.data() + handleSizeAligned, handleSize * 2);
+        memcpy(shaderBindingTables.hit.mapped, shaderHandleStorage.data() + handleSizeAligned * 3, handleSize);
     }
 
     void createRayTracingPipeline() override
@@ -198,6 +198,10 @@ private:
             shaderGroup.closestHitShader = VK_SHADER_UNUSED_KHR;
             shaderGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
             shaderGroup.intersectionShader = VK_SHADER_UNUSED_KHR;
+            shaderGroups.push_back(shaderGroup);
+
+            shaderStages.push_back(loadShader(getShadersPath() + "ddgi/Shadow.rmiss.spv", VK_SHADER_STAGE_MISS_BIT_KHR));
+            shaderGroup.generalShader = static_cast<uint32_t>(shaderStages.size()) - 1;
             shaderGroups.push_back(shaderGroup);
         }
 
@@ -276,7 +280,7 @@ private:
                     // Binding 4: Probe Distance
                     vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4, &pProbeDistance->descriptor),
                     // Binding 5: Ray Data
-                    vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 5, &pProbeData->descriptor),
+                    vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 5, &pRayData->descriptor),
                     // Binding 6: Geometry Node
                     vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 6, &geometryNodesBuffer->descriptor),
                     // Binding 7: Material
