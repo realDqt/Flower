@@ -7,4 +7,6 @@ set "GLSLANG_VALIDATOR=E:/Vulkan/Bin/glslangValidator.exe"
 %GLSLANG_VALIDATOR% -V -R --target-env vulkan1.2 ProbeTrace.rgen.glsl -o ProbeTrace.rgen.spv
 %GLSLANG_VALIDATOR% -V -R --target-env vulkan1.2 ProbeBlendIrradiance.comp.glsl -o ProbeBlendIrradiance.comp.spv
 %GLSLANG_VALIDATOR% -V -R --target-env vulkan1.2 ProbeBlendDistance.comp.glsl -o ProbeBlendDistance.comp.spv
+%GLSLANG_VALIDATOR% -V -R --target-env vulkan1.2 ProbeRelocation.comp.glsl -o ProbeRelocation.comp.spv
+%GLSLANG_VALIDATOR% -V -R --target-env vulkan1.2 ProbeClassification.comp.glsl -o ProbeClassification.comp.spv
 pause

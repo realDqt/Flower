@@ -1,20 +1,20 @@
 #pragma once
 #include "DDGICompute.hpp"
 
-class ProbeBlendDistanceCompute : public DDGICompute{
+class ProbeClassificationCompute : public DDGICompute{
 public:
-    ProbeBlendDistanceCompute(
+    ProbeClassificationCompute(
             VkDevice _device,
             VkPipelineCache _pipelineCache,
             vks::Buffer* _pDDGIVolumes,
-            vks::Texture* _pProbeDistance,
-            vks::Texture* _pRayData
+            vks::Texture* _pRayData,
+            vks::Texture* _pProbeData
     ): DDGICompute(
             _device,
             _pipelineCache
     ){
         pDDGIVolumes = _pDDGIVolumes;
-        pProbeDistance = _pProbeDistance;
+        pProbeData = _pProbeData;
         pRayData = _pRayData;
     }
 
@@ -23,48 +23,12 @@ public:
         vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSets[currentBuffer], 0, 0);
 
 
-        uint32_t probeCountX, probeCountY, probeCountZ;
-        getDDGIVolumeProbeCounts(*getGlobalDDGIVolumeDescGPU(), probeCountX, probeCountY, probeCountZ);
+        uint32_t numProbes = getDDGIVolumeProbeCounts(*getGlobalDDGIVolumeDescGPU());
+        const uint32_t groupSizeX = 32;
 
-        vkCmdDispatch(cmdBuffer, probeCountX, probeCountY, probeCountZ);
+        vkCmdDispatch(cmdBuffer, ceil(float(numProbes) / float(groupSizeX)), 1, 1);
 
-        // probe distance
-        VkImageSubresourceRange subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, pProbeDistance->layerCount };
-        vks::tools::setImageLayout(
-                cmdBuffer,
-                pProbeDistance->image,
-                VK_IMAGE_LAYOUT_GENERAL,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-
-                subresourceRange,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR
-        );
-        pProbeDistance->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-
-        /*
-        // ray data
-        subresourceRange.layerCount = pRayData->layerCount;
-        VkImageMemoryBarrier rayDataBarrier{};
-        rayDataBarrier.subresourceRange = subresourceRange;
-        rayDataBarrier.image = pRayData->image;
-        rayDataBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        rayDataBarrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        rayDataBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-        rayDataBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-        rayDataBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        rayDataBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-
-        vkCmdPipelineBarrier(
-                cmdBuffer,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-                0,
-                0, nullptr,
-                0, nullptr,
-                1, &rayDataBarrier);
-        */
+        // TODO Barrier
     }
 
     void prepare() override{
@@ -84,15 +48,15 @@ public:
         VkDescriptorSetLayoutCreateInfo descriptorLayout = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
         VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorLayout, nullptr,	&descriptorSetLayout));
 
-        pProbeDistance->updateDescriptor();
+        pProbeData->updateDescriptor();
         pRayData->updateDescriptor();
         for (auto i = 0; i < maxConcurrentFrames; i++) {
             VkDescriptorSetAllocateInfo allocInfo = vks::initializers::descriptorSetAllocateInfo(descriptorPool, &descriptorSetLayout, 1);
             VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSets[i]));
             std::vector<VkWriteDescriptorSet> computeWriteDescriptorSets = {
                     vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 0, &pDDGIVolumes->descriptor),
-                    vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &pProbeDistance->descriptor),
-                    vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2, &pRayData->descriptor),
+                    vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &pRayData->descriptor),
+                    vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2, &pProbeData->descriptor),
             };
             vkUpdateDescriptorSets(device, static_cast<uint32_t>(computeWriteDescriptorSets.size()), computeWriteDescriptorSets.data(), 0, nullptr);
         }
@@ -102,7 +66,7 @@ public:
         VK_CHECK_RESULT(vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout));
 
         VkComputePipelineCreateInfo computePipelineCreateInfo = vks::initializers::computePipelineCreateInfo(pipelineLayout, 0);
-        computePipelineCreateInfo.stage = loadShader(getShadersPath() + "ddgi/ProbeBlendDistance.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
+        computePipelineCreateInfo.stage = loadShader(getShadersPath() + "ddgi/ProbeClassification.comp.spv", VK_SHADER_STAGE_COMPUTE_BIT);
         VK_CHECK_RESULT(vkCreateComputePipelines(device, pipelineCache, 1, &computePipelineCreateInfo, nullptr, &pipeline));
     }
 
@@ -110,6 +74,6 @@ public:
 private:
 
     vks::Buffer* pDDGIVolumes;
-    vks::Texture* pProbeDistance;
+    vks::Texture* pProbeData;
     vks::Texture* pRayData;
 };

@@ -279,10 +279,13 @@ void main() {
         return;
     }
 
+    // dqt debug
+    /*
     if(hitValue.hitKind == gl_HitKindBackFacingTriangleEXT){
         DDGIStoreProbeRayBackfaceHit(outputCoords, volume, hitValue.dis);
         return;
     }
+    */
 
     if((volume.probeRelocationEnabled || volume.probeClassificationEnabled) && rayIndex < DDGI_NUM_FIXED_RAYS)
     {

@@ -21,15 +21,15 @@ inline DDGIVolumeDescGPU* getGlobalDDGIVolumeDescGPU()
     ddgiVolumeDescGPU.probeRayRotation = glm::vec4(0, 0, 0, 1);
     ddgiVolumeDescGPU.movementType = 0;
 
-    ddgiVolumeDescGPU.probeSpacing = glm::vec3(0.08);
-    ddgiVolumeDescGPU.probeCounts = glm::ivec3(8, 8, 8);
+    ddgiVolumeDescGPU.probeSpacing = glm::vec3(0.07);
+    ddgiVolumeDescGPU.probeCounts = glm::ivec3(10);
     
     ddgiVolumeDescGPU.probeNumRays = 256;
     ddgiVolumeDescGPU.probeNumIrradianceInteriorTexels = DDGI_PROBE_IRRADIANCE_SIDE;
     ddgiVolumeDescGPU.probeNumDistanceInteriorTexels = DDGI_PROBE_DEPTH_SIDE;
 
     ddgiVolumeDescGPU.probeHysteresis = 0.97f;
-    ddgiVolumeDescGPU.probeMaxRayDistance = 1e27f;
+    ddgiVolumeDescGPU.probeMaxRayDistance = 10;
     ddgiVolumeDescGPU.probeNormalBias = 0.002f;
     ddgiVolumeDescGPU.probeViewBias = 0.01f;
     ddgiVolumeDescGPU.probeDistanceExponent = 50.f;
@@ -71,6 +71,12 @@ inline void getDDGIVolumeProbeCounts(const DDGIVolumeDescGPU& desc, uint32_t& pr
     probeCountX = (uint32_t)desc.probeCounts.x;
     probeCountY = (uint32_t)desc.probeCounts.z;
     probeCountZ = (uint32_t)desc.probeCounts.y;
+}
+
+inline uint32_t getDDGIVolumeProbeCounts(const DDGIVolumeDescGPU& desc)
+{
+    uint32_t numProbes = desc.probeCounts.x * desc.probeCounts.y * desc.probeCounts.z;
+    return numProbes;
 }
 
 inline void getDDGIVolumeTextureDimensions(const DDGIVolumeDescGPU& desc, EDDGIVolumeTextureType type, uint32_t& width, uint32_t& height, uint32_t& arraySize)

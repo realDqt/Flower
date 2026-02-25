@@ -308,7 +308,7 @@ void main()
 
 		vec3 directLighting = evalDirectLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.mat.baseColor.rgb, -ray.direction);
 		vec3 indirectLighting = evalIndirectLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.mat.baseColor.rgb, -ray.direction);
-		finalColor = indirectLighting;
+		finalColor = directLighting + indirectLighting;
 	}
 
 	imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.0f));
