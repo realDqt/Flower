@@ -9,6 +9,7 @@
 layout(binding = 0, set = 0) readonly buffer DDGIVolumeDescGPUPackedBlock {DDGIVolumeDescGPUPacked d[];} DDGIVolumes;
 layout(binding = 1, set = 0, rg32f) uniform image2DArray ProbeDistance;
 layout(binding = 2, set = 0, rgba32f) uniform readonly image2DArray RayData;
+layout(binding = 3, set = 0, rgba32f) uniform readonly image2DArray ProbeData;
 
 
 DDGIVolumeDescGPUPacked GetDDGIVolumeConstants(uint index) { return DDGIVolumes.d[index]; }
@@ -20,18 +21,16 @@ float DDGILoadProbeState(int probeIndex, DDGIVolumeDescGPU volume)
     float state = DDGI_PROBE_STATE_ACTIVE;
     if (volume.probeClassificationEnabled)
     {
-        // TODO
-        /*
         // Get the probe's texel coordinates in the Probe Data texture
         uvec3 probeDataCoords = DDGIGetProbeTexelCoords(probeIndex, volume);
 
         // Get the probe's classification state
-        state = texelFetch(ProbeData, ivec3(probeDataCoords)).w;
-        */
+        state = imageLoad(ProbeData, ivec3(probeDataCoords)).w;
     }
 
     return state;
 }
+
 
 vec3 DDGILoadProbeRayRadiance(uvec3 coords, DDGIVolumeDescGPU volume)
 {
@@ -94,14 +93,15 @@ void main()
 
         if (IsVolumeMovementScrolling(volume))
         {
-            // TODO
+            // TODO Scrolling
         }
 
         // Early out: don't blend rays for probes that are inactive
         float probeState = DDGILoadProbeState(probeIndex, volume);
         if (probeState == DDGI_PROBE_STATE_INACTIVE)
         {
-            // TODO
+            // TODO Variability
+            return;
         }
 
         // Get the probe ray direction associated with this thread
@@ -112,7 +112,7 @@ void main()
 
         if(volume.probeRelocationEnabled || volume.probeClassificationEnabled)
         {
-            // TODO
+            rayIndex = DDGI_NUM_FIXED_RAYS;
         }
 
 
@@ -139,7 +139,8 @@ void main()
         float epsilon = float(volume.probeNumRays);
         if (volume.probeRelocationEnabled || volume.probeClassificationEnabled)
         {
-            // TODO
+            // If relocation or classification are enabled, fixed rays aren't blended since they will bias the result
+            epsilon -= DDGI_NUM_FIXED_RAYS;
         }
         epsilon *= 1e-9f;
 

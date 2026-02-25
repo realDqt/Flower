@@ -47,7 +47,9 @@ vec3 DDGIGetProbeRayDirection(int rayIndex, DDGIVolumeDescGPU volume)
 
     if (volume.probeRelocationEnabled || volume.probeClassificationEnabled)
     {
-        // TODO
+        isFixedRay = (rayIndex < DDGI_NUM_FIXED_RAYS);
+        sampleIndex = isFixedRay ? rayIndex : (rayIndex - DDGI_NUM_FIXED_RAYS);
+        numRays = isFixedRay ? DDGI_NUM_FIXED_RAYS : (numRays - DDGI_NUM_FIXED_RAYS);
     }
 
     // Get a ray direction on the sphere

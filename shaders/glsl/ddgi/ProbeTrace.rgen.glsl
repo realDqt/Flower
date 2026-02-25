@@ -26,14 +26,11 @@ float DDGILoadProbeState(int probeIndex, DDGIVolumeDescGPU volume)
     float state = DDGI_PROBE_STATE_ACTIVE;
     if (volume.probeClassificationEnabled)
     {
-        // TODO
-        /*
         // Get the probe's texel coordinates in the Probe Data texture
         uvec3 probeDataCoords = DDGIGetProbeTexelCoords(probeIndex, volume);
 
         // Get the probe's classification state
-        state = texelFetch(ProbeData, ivec3(probeDataCoords)).w;
-        */
+        state = texelFetch(ProbeData, ivec3(probeDataCoords), 0).w;
     }
 
     return state;
@@ -75,6 +72,11 @@ vec3 EvalDiffuseLighting(vec3 posW, vec3 normW, vec3 baseColor, vec3 wo, Directi
     return vec3(0.f);
 }
 
+vec3 DDGILoadProbeDataOffset(uvec3 coords, DDGIVolumeDescGPU volume)
+{
+    return texelFetch(ProbeData, ivec3(coords), 0).xyz * volume.probeSpacing;
+}
+
 /**
  * Computes the world-space position of a probe from the probe's 3D grid-space coordinates.
  * When probe relocation is enabled, offsets are loaded from the probe data
@@ -88,10 +90,23 @@ vec3 DDGIGetProbeWorldPositionWithRelocation(ivec3 probeCoords, DDGIVolumeDescGP
     // If the volume has probe relocation enabled, account for the probe offsets
     if (volume.probeRelocationEnabled)
     {
-        // TODO
+        // Get the scroll adjusted probe index
+        int probeIndex = DDGIGetScrollingProbeIndex(probeCoords, volume);
+
+        // Find the texture coordinates of the probe in the Probe Data texture
+        uvec3 coords = DDGIGetProbeTexelCoords(probeIndex, volume);
+
+        // Load the probe's world-space position offset and add it to the current world position
+        probeWorldPosition += DDGILoadProbeDataOffset(coords, volume);
+
     }
 
     return probeWorldPosition;
+}
+
+void DDGIStoreProbeRayFrontfaceHit(uvec3 coords, DDGIVolumeDescGPU volume, float hitT)
+{
+    imageStore(RayData, ivec3(coords), vec4(vec3(0.0), hitT));
 }
 
 /**
@@ -140,7 +155,7 @@ vec3 DDGIGetVolumeIrradiance(
         if (probeState == DDGI_PROBE_STATE_INACTIVE) continue;
 
         // Get the adjacent probe's world position
-        vec3 adjacentProbeWorldPosition = DDGIGetProbeWorldPositionWithRelocation(adjacentProbeCoords, volume); // TODO relocation
+        vec3 adjacentProbeWorldPosition = DDGIGetProbeWorldPositionWithRelocation(adjacentProbeCoords, volume);
 
         // Compute the distance and direction from the (biased and non-biased) shading point and the adjacent probe
         vec3 worldPosToAdjProbe = normalize(adjacentProbeWorldPosition - worldPosition);
@@ -260,7 +275,7 @@ void main() {
 
     if (probeState == DDGI_PROBE_STATE_INACTIVE && rayIndex >= DDGI_NUM_FIXED_RAYS) return;
 
-    vec3 probeWorldPosition = DDGIGetProbeWorldPosition(probeCoords, volume);
+    vec3 probeWorldPosition = DDGIGetProbeWorldPositionWithRelocation(probeCoords, volume);
 
     vec3 probeRayDirection = DDGIGetProbeRayDirection(rayIndex, volume);
 
@@ -280,16 +295,18 @@ void main() {
     }
 
     // dqt debug
-    /*
+
     if(hitValue.hitKind == gl_HitKindBackFacingTriangleEXT){
         DDGIStoreProbeRayBackfaceHit(outputCoords, volume, hitValue.dis);
         return;
     }
-    */
+
 
     if((volume.probeRelocationEnabled || volume.probeClassificationEnabled) && rayIndex < DDGI_NUM_FIXED_RAYS)
     {
-        // TODO
+        // Store the ray front face hit distance (only)
+        DDGIStoreProbeRayFrontfaceHit(outputCoords, volume, hitValue.dis);
+        return;
     }
 
 

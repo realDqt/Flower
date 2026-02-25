@@ -16,45 +16,50 @@ inline std::string getShadersPath()
 inline DDGIVolumeDescGPU* getGlobalDDGIVolumeDescGPU()
 {
     static DDGIVolumeDescGPU ddgiVolumeDescGPU{};
-    ddgiVolumeDescGPU.origin = -glm::vec3(-0.25, 0.25, 0.25);
-    ddgiVolumeDescGPU.rotation = glm::vec4(0, 0, 0, 1);
-    ddgiVolumeDescGPU.probeRayRotation = glm::vec4(0, 0, 0, 1);
-    ddgiVolumeDescGPU.movementType = 0;
+    static bool initialized = false;
+    if(!initialized){
+        ddgiVolumeDescGPU.origin = -glm::vec3(-0.25, 0.25, 0.25);
+        ddgiVolumeDescGPU.rotation = glm::vec4(0, 0, 0, 1);
+        ddgiVolumeDescGPU.probeRayRotation = glm::vec4(0, 0, 0, 1);
+        ddgiVolumeDescGPU.movementType = 0;
 
-    ddgiVolumeDescGPU.probeSpacing = glm::vec3(0.07);
-    ddgiVolumeDescGPU.probeCounts = glm::ivec3(10);
-    
-    ddgiVolumeDescGPU.probeNumRays = 256;
-    ddgiVolumeDescGPU.probeNumIrradianceInteriorTexels = DDGI_PROBE_IRRADIANCE_SIDE;
-    ddgiVolumeDescGPU.probeNumDistanceInteriorTexels = DDGI_PROBE_DEPTH_SIDE;
+        ddgiVolumeDescGPU.probeSpacing = glm::vec3(0.07);
+        ddgiVolumeDescGPU.probeCounts = glm::ivec3(10);
 
-    ddgiVolumeDescGPU.probeHysteresis = 0.97f;
-    ddgiVolumeDescGPU.probeMaxRayDistance = 10;
-    ddgiVolumeDescGPU.probeNormalBias = 0.002f;
-    ddgiVolumeDescGPU.probeViewBias = 0.01f;
-    ddgiVolumeDescGPU.probeDistanceExponent = 50.f;
-    ddgiVolumeDescGPU.probeIrradianceEncodingGamma = 5.f;
+        ddgiVolumeDescGPU.probeNumRays = 256;
+        ddgiVolumeDescGPU.probeNumIrradianceInteriorTexels = DDGI_PROBE_IRRADIANCE_SIDE;
+        ddgiVolumeDescGPU.probeNumDistanceInteriorTexels = DDGI_PROBE_DEPTH_SIDE;
 
-    ddgiVolumeDescGPU.probeIrradianceThreshold = 0.2f;
-    ddgiVolumeDescGPU.probeBrightnessThreshold = 1.0f;
-    ddgiVolumeDescGPU.probeRandomRayBackfaceThreshold = 0.1f;
+        ddgiVolumeDescGPU.probeHysteresis = 0.97f;
+        ddgiVolumeDescGPU.probeMaxRayDistance = 10;
+        ddgiVolumeDescGPU.probeNormalBias = 0.002f;
+        ddgiVolumeDescGPU.probeViewBias = 0.01f;
+        ddgiVolumeDescGPU.probeDistanceExponent = 50.f;
+        ddgiVolumeDescGPU.probeIrradianceEncodingGamma = 5.f;
 
-    ddgiVolumeDescGPU.probeFixedRayBackfaceThreshold = 0.25f;
-    ddgiVolumeDescGPU.probeMinFrontfaceDistance = 1.0f;
-    
-    ddgiVolumeDescGPU.probeScrollOffsets = glm::ivec3(0, 0, 0);
-    for(int i = 0; i < 3; ++i)
-    {
-        ddgiVolumeDescGPU.probeScrollClear[i] = false;
-        ddgiVolumeDescGPU.probeScrollDirections[i] = false;
+        ddgiVolumeDescGPU.probeIrradianceThreshold = 0.2f;
+        ddgiVolumeDescGPU.probeBrightnessThreshold = 1.0f;
+        ddgiVolumeDescGPU.probeRandomRayBackfaceThreshold = 0.1f;
+
+        ddgiVolumeDescGPU.probeFixedRayBackfaceThreshold = 0.25f;
+        ddgiVolumeDescGPU.probeMinFrontfaceDistance = 0.02f;
+
+        ddgiVolumeDescGPU.probeScrollOffsets = glm::ivec3(0, 0, 0);
+        for(int i = 0; i < 3; ++i)
+        {
+            ddgiVolumeDescGPU.probeScrollClear[i] = false;
+            ddgiVolumeDescGPU.probeScrollDirections[i] = false;
+        }
+
+        ddgiVolumeDescGPU.probeRayDataFormat = 6;
+        ddgiVolumeDescGPU.probeIrradianceFormat = 6;
+
+        ddgiVolumeDescGPU.probeRelocationEnabled = true;
+        ddgiVolumeDescGPU.probeClassificationEnabled = true;
+        ddgiVolumeDescGPU.probeVariabilityEnabled = false;
+
+        initialized = true;
     }
-
-    ddgiVolumeDescGPU.probeRayDataFormat = 6;
-    ddgiVolumeDescGPU.probeIrradianceFormat = 6;
-
-    ddgiVolumeDescGPU.probeRelocationEnabled = false;
-    ddgiVolumeDescGPU.probeClassificationEnabled = false;
-    ddgiVolumeDescGPU.probeVariabilityEnabled = false;
     return &ddgiVolumeDescGPU;
 }
 
@@ -152,14 +157,16 @@ inline VkFormat getFormatByType(const EDDGIVolumeTextureType& textureType)
     }
 }
 
-inline float getInitialValueByType(const EDDGIVolumeTextureType& textureType)
+inline glm::vec4 getInitialValueByType(const EDDGIVolumeTextureType& textureType)
 {
     switch (textureType) {
         case EDDGIVolumeTextureType::Irradiance:
         case EDDGIVolumeTextureType::Distance:
-            return 0.f;
+            return glm::vec4(0.f);
+        case EDDGIVolumeTextureType::Data:
+            return glm::vec4(0.f, 0.f, 0.f, DDGI_PROBE_STATE_ACTIVE);
         default:
-            return 0.f;
+            return glm::vec4(0.f);
     }
 }
 
@@ -168,7 +175,7 @@ inline void clearAndTransitionImage(
         VkQueue queue,
         vks::Texture& texture,
         VkImageLayout targetLayout,
-        float clearValue = 0.0f)
+        glm::vec4 clearValues = glm::vec4(0.f))
 {
     // 1. 创建一次性命令缓冲
     VkCommandBuffer cmd = device->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
@@ -179,7 +186,7 @@ inline void clearAndTransitionImage(
     vks::tools::setImageLayout(cmd, texture.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, range, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
     // --- 步骤 2: 执行清除 (Clear) ---
-    VkClearColorValue cv = { {clearValue, clearValue, clearValue, clearValue} };
+    VkClearColorValue cv = { {clearValues[0], clearValues[1], clearValues[2], clearValues[3]} };
     vkCmdClearColorImage(cmd, texture.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &cv, 1, &range);
 
     // --- 步骤 3: TRANSFER_DST_OPTIMAL -> 目标布局 (如 SHADER_READ_ONLY 或 GENERAL) ---

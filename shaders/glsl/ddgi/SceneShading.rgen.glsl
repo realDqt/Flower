@@ -22,6 +22,7 @@ DDGIVolumeDescGPUPacked GetDDGIVolumeConstants(uint index) { return DDGIVolumes.
 
 layout(binding = 6, set = 0) uniform sampler2DArray ProbeIrradiance;
 layout(binding = 7, set = 0) uniform sampler2DArray ProbeDistance;
+layout(binding = 8, set = 0) uniform sampler2DArray ProbeData;
 
 
 layout(location = 0) rayPayloadEXT RayPayload hitValue;
@@ -88,18 +89,21 @@ float DDGILoadProbeState(int probeIndex, DDGIVolumeDescGPU volume)
 	float state = DDGI_PROBE_STATE_ACTIVE;
 	if (volume.probeClassificationEnabled)
 	{
-		// TODO
-	/*
-        // Get the probe's texel coordinates in the Probe Data texture
-        uvec3 probeDataCoords = DDGIGetProbeTexelCoords(probeIndex, volume);
+		// Get the probe's texel coordinates in the Probe Data texture
+		uvec3 probeDataCoords = DDGIGetProbeTexelCoords(probeIndex, volume);
 
-        // Get the probe's classification state
-        state = texelFetch(ProbeData, ivec3(probeDataCoords)).w;
-        */
+		// Get the probe's classification state
+		state = texelFetch(ProbeData, ivec3(probeDataCoords), 0).w;
 	}
 
 	return state;
 }
+
+vec3 DDGILoadProbeDataOffset(uvec3 coords, DDGIVolumeDescGPU volume)
+{
+	return texelFetch(ProbeData, ivec3(coords), 0).xyz * volume.probeSpacing;
+}
+
 
 /**
  * Computes the world-space position of a probe from the probe's 3D grid-space coordinates.
@@ -114,7 +118,15 @@ vec3 DDGIGetProbeWorldPositionWithRelocation(ivec3 probeCoords, DDGIVolumeDescGP
 	// If the volume has probe relocation enabled, account for the probe offsets
 	if (volume.probeRelocationEnabled)
 	{
-		// TODO
+		// Get the scroll adjusted probe index
+		int probeIndex = DDGIGetScrollingProbeIndex(probeCoords, volume);
+
+		// Find the texture coordinates of the probe in the Probe Data texture
+		uvec3 coords = DDGIGetProbeTexelCoords(probeIndex, volume);
+
+		// Load the probe's world-space position offset and add it to the current world position
+		probeWorldPosition += DDGILoadProbeDataOffset(coords, volume);
+
 	}
 
 	return probeWorldPosition;
@@ -166,7 +178,7 @@ vec3 DDGIGetVolumeIrradiance(
 		if (probeState == DDGI_PROBE_STATE_INACTIVE) continue;
 
 		// Get the adjacent probe's world position
-		vec3 adjacentProbeWorldPosition = DDGIGetProbeWorldPositionWithRelocation(adjacentProbeCoords, volume); // TODO relocation
+		vec3 adjacentProbeWorldPosition = DDGIGetProbeWorldPositionWithRelocation(adjacentProbeCoords, volume);
 
 		// Compute the distance and direction from the (biased and non-biased) shading point and the adjacent probe
 		vec3 worldPosToAdjProbe = normalize(adjacentProbeWorldPosition - worldPosition);

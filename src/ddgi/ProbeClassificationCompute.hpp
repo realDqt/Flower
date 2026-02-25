@@ -19,6 +19,7 @@ public:
     }
 
     void recordCommandBuffer(VkCommandBuffer cmdBuffer, uint32_t currentBuffer) override{
+        if(!getGlobalDDGIVolumeDescGPU()->probeClassificationEnabled)return;
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSets[currentBuffer], 0, 0);
 
@@ -28,7 +29,42 @@ public:
 
         vkCmdDispatch(cmdBuffer, ceil(float(numProbes) / float(groupSizeX)), 1, 1);
 
-        // TODO Barrier
+        // probe data
+        VkImageSubresourceRange subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, pProbeData->layerCount };
+        VkImageMemoryBarrier dataBarrier{};
+        dataBarrier.subresourceRange = subresourceRange;
+        dataBarrier.image = pProbeData->image;
+        dataBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        dataBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        dataBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        dataBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        dataBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        dataBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        pProbeData->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        // ray data
+        VkImageMemoryBarrier rayDataBarrier{};
+        subresourceRange.layerCount = pRayData->layerCount;
+        rayDataBarrier.subresourceRange = subresourceRange;
+        rayDataBarrier.image = pRayData->image;
+        rayDataBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        rayDataBarrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        rayDataBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        rayDataBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        rayDataBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        rayDataBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+        std::vector<VkImageMemoryBarrier> imageBarriers{dataBarrier, rayDataBarrier};
+
+
+        vkCmdPipelineBarrier(
+                cmdBuffer,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+                0,
+                0, nullptr,
+                0, nullptr,
+                imageBarriers.size(), imageBarriers.data());
     }
 
     void prepare() override{

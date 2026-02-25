@@ -56,42 +56,46 @@ public:
                 dispatchHeight,
                 dispatchDepth);
 
-        // image layout转换
-        // 1. probe irradiance/distance/data VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL -> VK_IMAGE_LAYOUT_GENERAL
+
+
+        // barriers
         VkImageSubresourceRange subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, pProbeIrradiance->layerCount };
-        vks::tools::setImageLayout(
-                cmdBuffer,
-                pProbeIrradiance->image,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                VK_IMAGE_LAYOUT_GENERAL,
-                subresourceRange,
-                VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+
+        VkImageMemoryBarrier irradianceBarrier{};
+        irradianceBarrier.subresourceRange = subresourceRange;
+        irradianceBarrier.image = pProbeIrradiance->image;
+        irradianceBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        irradianceBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        irradianceBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        irradianceBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        irradianceBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        irradianceBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         pProbeIrradiance->imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
         subresourceRange.layerCount = pProbeDistance->layerCount;
-        vks::tools::setImageLayout(
-                cmdBuffer,
-                pProbeDistance->image,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                VK_IMAGE_LAYOUT_GENERAL,
-                subresourceRange,
-                VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+        VkImageMemoryBarrier distanceBarrier{};
+        distanceBarrier.subresourceRange = subresourceRange;
+        distanceBarrier.image = pProbeDistance->image;
+        distanceBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        distanceBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        distanceBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        distanceBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        distanceBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        distanceBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         pProbeDistance->imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
         subresourceRange.layerCount = pProbeData->layerCount;
-        vks::tools::setImageLayout(
-                cmdBuffer,
-                pProbeData->image,
-                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                VK_IMAGE_LAYOUT_GENERAL,
-                subresourceRange,
-                VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-        pProbeDistance->imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        VkImageMemoryBarrier dataBarrier{};
+        dataBarrier.subresourceRange = subresourceRange;
+        dataBarrier.image = pProbeData->image;
+        dataBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        dataBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        dataBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        dataBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        dataBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        dataBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        pProbeData->imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
-        // 2. ray data read after write barrier
         subresourceRange.layerCount = pRayData->layerCount;
         VkImageMemoryBarrier rayDataBarrier{};
         rayDataBarrier.subresourceRange = subresourceRange;
@@ -103,6 +107,7 @@ public:
         rayDataBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         rayDataBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 
+        std::vector<VkImageMemoryBarrier> imageBarriers{irradianceBarrier, distanceBarrier, dataBarrier, rayDataBarrier};
         vkCmdPipelineBarrier(
                 cmdBuffer,
                 VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
@@ -110,7 +115,7 @@ public:
                 0,
                 0, nullptr,
                 0, nullptr,
-                1, &rayDataBarrier);
+                imageBarriers.size(), imageBarriers.data());
     }
 
     ~ProbeTraceRayTracing() override

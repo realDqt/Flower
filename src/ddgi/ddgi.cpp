@@ -9,6 +9,8 @@
 #include "ProbeTraceRayTracing.hpp"
 #include "ProbeBlendIrradianceCompute.hpp"
 #include "ProbeBlendDistanceCompute.hpp"
+#include "ProbeRelocationCompute.hpp"
+#include "ProbeClassificationCompute.hpp"
 #include "SceneShadingRayTracing.hpp"
 
 class CornellBox : public VulkanRaytracingSample
@@ -37,10 +39,12 @@ public:
 
 	VkPhysicalDeviceDescriptorIndexingFeaturesEXT physicalDeviceDescriptorIndexingFeatures{};
 
-	std::unique_ptr<SceneShadingRayTracing> sceneShadingRayTracing = nullptr;
     std::unique_ptr<ProbeTraceRayTracing> probeTraceRayTracing = nullptr;
     std::unique_ptr<ProbeBlendIrradianceCompute> probeBlendIrradianceCompute = nullptr;
     std::unique_ptr<ProbeBlendDistanceCompute> probeBlendDistanceCompute = nullptr;
+    std::unique_ptr<ProbeRelocationCompute> probeRelocationCompute = nullptr;
+    std::unique_ptr<ProbeClassificationCompute> probeClassificationCompute = nullptr;
+	std::unique_ptr<SceneShadingRayTracing> sceneShadingRayTracing = nullptr;
 
 
     CornellBox() : VulkanRaytracingSample()
@@ -490,13 +494,19 @@ public:
         probeTraceRayTracing = std::make_unique<ProbeTraceRayTracing>(device, &rayTracingPipelineProperties, vulkanDevice, &cornell, &bottomLevelAS, &topLevelAS, &storageImage, &geometryNodesBuffer, &materialDataBuffer, &probeIrradiance, &probeDistance, &probeData, &rayData, &ddgiVolumes);
         probeTraceRayTracing->prepare();
 
-        probeBlendIrradianceCompute = std::make_unique<ProbeBlendIrradianceCompute>(device, pipelineCache, &ddgiVolumes, &probeIrradiance, &rayData);
+        probeBlendIrradianceCompute = std::make_unique<ProbeBlendIrradianceCompute>(device, pipelineCache, &ddgiVolumes, &probeIrradiance, &rayData, &probeData);
         probeBlendIrradianceCompute->prepare();
 
-        probeBlendDistanceCompute = std::make_unique<ProbeBlendDistanceCompute>(device, pipelineCache, &ddgiVolumes, &probeDistance, &rayData);
+        probeBlendDistanceCompute = std::make_unique<ProbeBlendDistanceCompute>(device, pipelineCache, &ddgiVolumes, &probeDistance, &rayData, &probeData);
         probeBlendDistanceCompute->prepare();
 
-		sceneShadingRayTracing = std::make_unique<SceneShadingRayTracing>(device, &rayTracingPipelineProperties, vulkanDevice, &cornell, &bottomLevelAS, &topLevelAS, &storageImage, &geometryNodesBuffer, &materialDataBuffer, &ddgiVolumes, &probeIrradiance, &probeDistance);
+        probeRelocationCompute = std::make_unique<ProbeRelocationCompute>(device, pipelineCache, &ddgiVolumes, &rayData, &probeData);
+        probeRelocationCompute->prepare();
+
+        probeClassificationCompute = std::make_unique<ProbeClassificationCompute>(device, pipelineCache, &ddgiVolumes, &rayData, &probeData);
+        probeClassificationCompute->prepare();
+
+		sceneShadingRayTracing = std::make_unique<SceneShadingRayTracing>(device, &rayTracingPipelineProperties, vulkanDevice, &cornell, &bottomLevelAS, &topLevelAS, &storageImage, &geometryNodesBuffer, &materialDataBuffer, &ddgiVolumes, &probeIrradiance, &probeDistance, &probeData);
 		sceneShadingRayTracing->prepare();
 		prepared = true;
 	}
@@ -520,6 +530,8 @@ public:
         probeTraceRayTracing->recordCommandBuffer(cmdBuffer, currentBuffer);
         probeBlendIrradianceCompute->recordCommandBuffer(cmdBuffer, currentBuffer);
         probeBlendDistanceCompute->recordCommandBuffer(cmdBuffer, currentBuffer);
+        probeRelocationCompute->recordCommandBuffer(cmdBuffer, currentBuffer);
+        probeClassificationCompute->recordCommandBuffer(cmdBuffer, currentBuffer);
 		sceneShadingRayTracing->recordCommandBuffer(cmdBuffer, currentBuffer);
 		/*
 			Copy ray tracing output to swap chain image

@@ -19,6 +19,7 @@ public:
     }
 
     void recordCommandBuffer(VkCommandBuffer cmdBuffer, uint32_t currentBuffer) override{
+        if(!getGlobalDDGIVolumeDescGPU()->probeRelocationEnabled)return;
         vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSets[currentBuffer], 0, 0);
 
@@ -28,7 +29,26 @@ public:
 
         vkCmdDispatch(cmdBuffer, ceil(float(numProbes) / float(groupSizeX)), 1, 1);
 
-        // TODO Barrier
+        // probe data
+        VkImageSubresourceRange subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, pProbeData->layerCount };
+        VkImageMemoryBarrier dataBarrier{};
+        dataBarrier.subresourceRange = subresourceRange;
+        dataBarrier.image = pProbeData->image;
+        dataBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        dataBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        dataBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        dataBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        dataBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        dataBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+        vkCmdPipelineBarrier(
+                cmdBuffer,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                0,
+                0, nullptr,
+                0, nullptr,
+                1, &dataBarrier);
     }
 
     void prepare() override{
