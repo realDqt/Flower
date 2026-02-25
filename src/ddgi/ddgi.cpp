@@ -373,7 +373,7 @@ public:
 	{
 		sceneShadingRayTracing->uniformData.projInverse = glm::inverse(camera.matrices.perspective);
 		sceneShadingRayTracing->uniformData.viewInverse = glm::inverse(camera.matrices.view);
-        sceneShadingRayTracing->uniformData.position = camera.position; // TODO
+        sceneShadingRayTracing->uniformData.position = -camera.position; // TODO
 		// This value is used to accumulate multiple frames into the finale picture
 		// It's required as ray tracing needs to do multiple passes for transparency
 		// In this sample we use noise offset by this frame index to shoot rays for transparency into different directions
@@ -428,9 +428,9 @@ public:
         green.baseColor =  glm::vec4(0.14f, 0.45f, 0.091f, 1.0f);
         vkobj::Material white(vulkanDevice);
         white.baseColor =  glm::vec4(0.725f, 0.71f, 0.68f, 1.0f);
-        vkobj::Material light(vulkanDevice);
-        light.baseColor =  glm::vec4(0.65f, 0.65f, 0.65f, 1.0f);
-        light.emission = 8.0f * glm::vec3(0.747f+0.058f, 0.747f+0.258f, 0.747f) + 15.6f * glm::vec3(0.740f+0.287f,0.740f+0.160f,0.740f) + 18.4f * glm::vec3(0.737f+0.642f,0.737f+0.159f,0.737f);
+        vkobj::Material yellow(vulkanDevice);
+        yellow.baseColor =  glm::vec4(1.f, 1.f, 0.f, 1.0f);
+        //light.emission = 8.0f * glm::vec3(0.747f+0.058f, 0.747f+0.258f, 0.747f) + 15.6f * glm::vec3(0.740f+0.287f,0.740f+0.160f,0.740f) + 18.4f * glm::vec3(0.737f+0.642f,0.737f+0.159f,0.737f);
         vkobj::Material specular(vulkanDevice);
         specular.baseColor = glm::vec4(0.725f, 0.71f, 0.68f, 1.0f);
         specular.metallic = 1.0f;
@@ -438,7 +438,7 @@ public:
 
         materials.push_back(white);
         materials.push_back(red);
-        materials.push_back(light);
+        materials.push_back(yellow);
         materials.push_back(green);
         materials.push_back(white);
         materials.push_back(white);

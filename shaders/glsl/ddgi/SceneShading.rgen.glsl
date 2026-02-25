@@ -192,6 +192,7 @@ vec3 DDGIGetVolumeIrradiance(
 		float  trilinearWeight = (trilinear.x * trilinear.y * trilinear.z);
 		float  weight = 1.f;
 
+
 		// A naive soft backface weight would ignore a probe when
 		// it is behind the surface. That's good for walls, but for
 		// small details inside of a room, the normals on the details
@@ -212,10 +213,12 @@ vec3 DDGIGetVolumeIrradiance(
 
 		// Find the variance of the mean distance
 		float variance = abs((filteredDistance.x * filteredDistance.x) - filteredDistance.y);
+		variance = max(variance, 0.0005f); // make no sense
+
 
 		// Occlusion test
 		float chebyshevWeight = 1.f;
-		if(biasedPosToAdjProbeDist > filteredDistance.x) // occluded
+		if(biasedPosToAdjProbeDist > filteredDistance.x + DDGI_CHEBVSHEV_BIAS) // occluded
 		{
 			// v must be greater than 0, which is guaranteed by the if condition above.
 			float v = biasedPosToAdjProbeDist - filteredDistance.x;

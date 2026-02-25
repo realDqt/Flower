@@ -35,6 +35,8 @@
 #define DDGI_PROBE_IRRADIANCE_WITH_BORDER_SIDE 10
 #define DDGI_PROBE_IRRADIANCE_SIDE 8
 
+#define DDGI_CHEBVSHEV_BIAS 0.2
+
 struct Material{
     vec4 baseColor;
     vec3 emission;

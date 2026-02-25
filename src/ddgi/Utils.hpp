@@ -23,16 +23,16 @@ inline DDGIVolumeDescGPU* getGlobalDDGIVolumeDescGPU()
         ddgiVolumeDescGPU.probeRayRotation = glm::vec4(0, 0, 0, 1);
         ddgiVolumeDescGPU.movementType = 0;
 
-        ddgiVolumeDescGPU.probeSpacing = glm::vec3(0.07);
-        ddgiVolumeDescGPU.probeCounts = glm::ivec3(10);
+        ddgiVolumeDescGPU.probeSpacing = glm::vec3(0.08);
+        ddgiVolumeDescGPU.probeCounts = glm::ivec3(9);
 
         ddgiVolumeDescGPU.probeNumRays = 256;
         ddgiVolumeDescGPU.probeNumIrradianceInteriorTexels = DDGI_PROBE_IRRADIANCE_SIDE;
         ddgiVolumeDescGPU.probeNumDistanceInteriorTexels = DDGI_PROBE_DEPTH_SIDE;
 
         ddgiVolumeDescGPU.probeHysteresis = 0.97f;
-        ddgiVolumeDescGPU.probeMaxRayDistance = 10;
-        ddgiVolumeDescGPU.probeNormalBias = 0.002f;
+        ddgiVolumeDescGPU.probeMaxRayDistance = 10.f;
+        ddgiVolumeDescGPU.probeNormalBias = 0.03f;
         ddgiVolumeDescGPU.probeViewBias = 0.01f;
         ddgiVolumeDescGPU.probeDistanceExponent = 50.f;
         ddgiVolumeDescGPU.probeIrradianceEncodingGamma = 5.f;
@@ -42,7 +42,7 @@ inline DDGIVolumeDescGPU* getGlobalDDGIVolumeDescGPU()
         ddgiVolumeDescGPU.probeRandomRayBackfaceThreshold = 0.1f;
 
         ddgiVolumeDescGPU.probeFixedRayBackfaceThreshold = 0.25f;
-        ddgiVolumeDescGPU.probeMinFrontfaceDistance = 0.02f;
+        ddgiVolumeDescGPU.probeMinFrontfaceDistance = 0.025f;
 
         ddgiVolumeDescGPU.probeScrollOffsets = glm::ivec3(0, 0, 0);
         for(int i = 0; i < 3; ++i)
@@ -248,14 +248,16 @@ inline void createDDGIVolumeTexture(const EDDGIVolumeTextureType& textureType, v
 
     VK_CHECK_RESULT(vkCreateImageView(device->logicalDevice, &viewCI, nullptr, &outVolumeTexture.view));
 
-    // 5. 创建采样器 (DDGI 通常需要线性采样)
+    // 5. 创建采样器
     VkSamplerCreateInfo samplerCI = vks::initializers::samplerCreateInfo();
-    samplerCI.magFilter = VK_FILTER_LINEAR;
-    samplerCI.minFilter = VK_FILTER_LINEAR;
-    samplerCI.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerCI.magFilter = (textureType == EDDGIVolumeTextureType::Data ? VK_FILTER_NEAREST : VK_FILTER_LINEAR);
+    samplerCI.minFilter = (textureType == EDDGIVolumeTextureType::Data ? VK_FILTER_NEAREST : VK_FILTER_LINEAR);
+    samplerCI.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
     samplerCI.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     samplerCI.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     samplerCI.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerCI.minLod = 0.0f;
+    samplerCI.maxLod = 0.0f;
 
     VK_CHECK_RESULT(vkCreateSampler(device->logicalDevice, &samplerCI, nullptr, &outVolumeTexture.sampler));
 

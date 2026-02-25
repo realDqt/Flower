@@ -35,5 +35,5 @@ enum class EDDGIVolumeTextureType
 #define DDGI_PROBE_IRRADIANCE_WITH_BORDER_SIDE 10
 #define DDGI_PROBE_IRRADIANCE_SIDE 8
 
-#define DDGI_PROBE_STATE_ACTIVE 0     // probe shoots rays and may be sampled by a front facing surface or another probe (recursive irradiance)
-#define DDGI_PROBE_STATE_INACTIVE 1   // probe doesn't need to shoot rays, it isn't near a front facing surface
+#define DDGI_PROBE_STATE_ACTIVE 0
+#define DDGI_PROBE_STATE_INACTIVE 1

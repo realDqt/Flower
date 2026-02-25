@@ -59,8 +59,6 @@ public:
 			height,
 			1);
 
-        // probe irradiance/distance VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL -> VK_IMAGE_LAYOUT_SHADER_RAED_ONLY_OPTIMAL
-        // ray data VK_IMAGE_LAYOUT_GENERAL -> VK_IMAGE_LAYOUT_GENERAL read
 	}
 	
 	~SceneShadingRayTracing() override
