@@ -7,6 +7,8 @@ public:
     AccelerationStructure bottomLevelAS{};
     AccelerationStructure topLevelAS{};
 
+    StorageImage ptAccu{};
+
     std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups{};
     struct ShaderBindingTables {
         ShaderBindingTable raygen;
@@ -474,7 +476,7 @@ public:
     {
         std::vector<VkDescriptorPoolSize> poolSizes = {
                 { VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxConcurrentFrames },
-                { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
+                { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames * 2 },
                 { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
                 { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames * 2 }
         };
@@ -504,7 +506,7 @@ public:
             accelerationStructureWrite.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 
             VkDescriptorImageInfo storageImageDescriptor{ VK_NULL_HANDLE, storageImage.view, VK_IMAGE_LAYOUT_GENERAL };
-        	
+            VkDescriptorImageInfo ptAccuDescriptor{ VK_NULL_HANDLE, ptAccu.view, VK_IMAGE_LAYOUT_GENERAL };
 
             std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
                     // Binding 0: Top level acceleration structure
@@ -518,7 +520,9 @@ public:
             		// Binding 4: Material Data
             		vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &materialDataBuffer.descriptor),
             		// Binding 5: Light Data Buffer
-            		vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5, &lightDataBuffer.descriptor)
+            		vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5, &lightDataBuffer.descriptor),
+                    // Binding 6: PT Accu
+                    vks::initializers::writeDescriptorSet(descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 6, &ptAccuDescriptor)
             };
             vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, VK_NULL_HANDLE);
         }
@@ -542,7 +546,9 @@ public:
         		// Binding 4: Base Colors buffer
         		vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 4),
         		// Binding 5: Light Data
-        		vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 5)
+        		vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 5),
+                // Binding 6: PT Accu
+                vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 6),
         };
 
         VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
@@ -638,7 +644,56 @@ public:
         resized = false;
     }
 
-	// done
+    void createPTAccuStorageImage(VkFormat format, VkExtent3D extent)
+    {
+
+        VkImageCreateInfo image{
+                .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                .imageType = VK_IMAGE_TYPE_2D,
+                .format = format,
+                .extent = extent,
+                .mipLevels = 1,
+                .arrayLayers = 1,
+                .samples = VK_SAMPLE_COUNT_1_BIT,
+                .tiling = VK_IMAGE_TILING_OPTIMAL,
+                .usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
+                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
+        };
+        VK_CHECK_RESULT(vkCreateImage(vulkanDevice->logicalDevice, &image, nullptr, &ptAccu.image));
+
+        VkMemoryRequirements memReqs;
+        vkGetImageMemoryRequirements(vulkanDevice->logicalDevice, ptAccu.image, &memReqs);
+        VkMemoryAllocateInfo memoryAllocateInfo = vks::initializers::memoryAllocateInfo();
+        memoryAllocateInfo.allocationSize = memReqs.size;
+        memoryAllocateInfo.memoryTypeIndex = vulkanDevice->getMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        VK_CHECK_RESULT(vkAllocateMemory(vulkanDevice->logicalDevice, &memoryAllocateInfo, nullptr, &ptAccu.memory));
+        VK_CHECK_RESULT(vkBindImageMemory(vulkanDevice->logicalDevice, ptAccu.image, ptAccu.memory, 0));
+
+        VkImageViewCreateInfo colorImageView{
+                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .image = ptAccu.image,
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format = format,
+                .subresourceRange = {
+                        .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                        .baseMipLevel = 0,
+                        .levelCount = 1,
+                        .baseArrayLayer = 0,
+                        .layerCount = 1
+                },
+        };
+        VK_CHECK_RESULT(vkCreateImageView(vulkanDevice->logicalDevice, &colorImageView, nullptr, &ptAccu.view));
+
+        VkCommandBuffer cmdBuffer = vulkanDevice->createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+        vks::tools::setImageLayout(cmdBuffer, ptAccu.image,
+                                   VK_IMAGE_LAYOUT_UNDEFINED,
+                                   VK_IMAGE_LAYOUT_GENERAL,
+                                   { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 });
+        vulkanDevice->flushCommandBuffer(cmdBuffer, queue);
+    }
+
+
+    // done
     void updateUniformBuffers()
     {
         uniformData.projInverse = glm::inverse(camera.matrices.perspective);
@@ -685,6 +740,7 @@ public:
         createTopLevelAccelerationStructure();
 
         createStorageImage(swapChain.colorFormat, { width, height, 1 });
+        createPTAccuStorageImage(VK_FORMAT_R32G32B32A32_SFLOAT, { width, height, 1 });
         createUniformBuffer();
         createRayTracingPipeline();
         createShaderBindingTables();

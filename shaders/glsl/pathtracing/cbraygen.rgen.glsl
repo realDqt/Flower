@@ -21,6 +21,8 @@ layout(binding = 5, set = 0) buffer LightData{
     int lightGeometryIndex;
 } lightData;
 
+layout(binding = 6, set = 0) uniform image2D ptAccu;
+
 layout(location = 0) rayPayloadEXT RayPayload hitValue;
 
 struct LightSampleRes{
@@ -242,9 +244,10 @@ void temporalAccumulation(vec3 finalColor)
 }
 
 void main()
-{
-    uint seed = getSeed();
 
+{
+
+    uint seed = getSeed();
     vec3 accumulatedColor = vec3(0.0);
     const int SPP = 1;
     const int BOUNCE = 128;
@@ -253,8 +256,20 @@ void main()
     {
         accumulatedColor += pathTracing(BOUNCE, seed);
     }
-    
-    vec3 finalColor = accumulatedColor / float(SPP);
-    
+
+    vec3 color = accumulatedColor;
+    float numPaths = SPP;
+
+    if(cam.frame > 0){
+        vec3 ptColor = imageLoad(ptAccu, ivec2(gl_LaunchIDEXT.xy)).xyz;
+        float ptNumPaths = imageLoad(ptAccu, ivec2(gl_LaunchIDEXT.xy)).w;
+        color += ptColor;
+        numPaths += ptNumPaths;
+        imageStore(ptAccu, ivec2(gl_LaunchIDEXT.xy), vec4(color, numPaths));
+    }else{
+        imageStore(ptAccu, ivec2(gl_LaunchIDEXT.xy), vec4(0.0));
+    }
+
+    vec3 finalColor = color / numPaths;
     imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.0f));
 }

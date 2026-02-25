@@ -312,7 +312,6 @@ void main()
 {
 	uint seed = getSeed();
 
-
 	Ray ray = getRayFromCamera(0.001, 10000.0, seed);
 	hitValue.dis = 1.0;
 	traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xff, 0, 0, 0, ray.origin, ray.tmin, ray.direction, ray.tmax, 0);
@@ -320,7 +319,6 @@ void main()
 	if(hitValue.dis < 0.0){
 		finalColor = vec3(0.0);
 	}else{
-
 		vec3 directLighting = evalDirectLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.mat.baseColor.rgb, -ray.direction);
 		vec3 indirectLighting = evalIndirectLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.mat.baseColor.rgb, -ray.direction);
 		finalColor = directLighting + indirectLighting;
