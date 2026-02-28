@@ -42,7 +42,6 @@ float DDGILoadProbeRayDistance(uvec3 coords, DDGIVolumeDescGPU volume)
     return imageLoad(RayData, ivec3(coords)).a;
 }
 
-// When the thread maps to a border texel, update it with the latest blended information for later use in bilinear filtering
 void UpdateBorderTexel(uvec3 DispatchThreadID, uvec3 GroupThreadID, uvec3 GroupID, DDGIVolumeDescGPU volume)
 {
     bool isCornerTexel = bool((GroupThreadID.x == 0 || GroupThreadID.x == (DDGI_PROBE_IRRADIANCE_WITH_BORDER_SIDE - 1)) && (GroupThreadID.y == 0 || GroupThreadID.y == (DDGI_PROBE_IRRADIANCE_WITH_BORDER_SIDE - 1)));
@@ -95,16 +94,14 @@ void main()
         {
             // TODO Scrolling
         }
-
-        // Early out: don't blend rays for probes that are inactive
+        
         float probeState = DDGILoadProbeState(probeIndex, volume);
         if (probeState == DDGI_PROBE_STATE_INACTIVE)
         {
             // TODO Variability
             return;
         }
-
-        // Get the probe ray direction associated with this thread
+        
         vec2 probeOctantUV = DDGIGetNormalizedOctahedralCoordinates(ivec2(threadCoords.xy), int(DDGI_PROBE_IRRADIANCE_SIDE));
         vec3 probeRayDirection = DDGIGetOctahedralDirection(probeOctantUV);
 
@@ -121,25 +118,19 @@ void main()
             vec3 rayDirection = DDGIGetProbeRayDirection(rayIndex, volume);
             float weight = max(0.f, dot(probeRayDirection, rayDirection));
             uvec3 rayDataTexCoords = DDGIGetRayDataTexelCoords(rayIndex, probeIndex, volume);
-
-            // Initialize the max probe hit distance to 50% larger the maximum distance between probe grid cells
+            
             float probeMaxRayDistance = length(volume.probeSpacing) * 1.5f;
-
-            // Increase or decrease the filtered distance value's "sharpness"
+            
             weight = pow(weight, volume.probeDistanceExponent);
-
-            // Load the ray traced distance
-            // Hit distance is negative on backface hits (for probe relocation), so take the absolute value of the loaded data
+            
             float probeRayDistance = min(abs(DDGILoadProbeRayDistance(rayDataTexCoords, volume)), probeMaxRayDistance);
-
-            // Filter the ray hit distance
+            
             result += vec4(probeRayDistance * weight, (probeRayDistance * probeRayDistance) * weight, 0.f, weight);
         }
 
         float epsilon = float(volume.probeNumRays);
         if (volume.probeRelocationEnabled || volume.probeClassificationEnabled)
         {
-            // If relocation or classification are enabled, fixed rays aren't blended since they will bias the result
             epsilon -= DDGI_NUM_FIXED_RAYS;
         }
         epsilon *= 1e-9f;
@@ -151,9 +142,7 @@ void main()
         vec2 probeDistanceMean = imageLoad(ProbeDistance, ivec3(DispatchThreadID)).rg;
         float  hysteresis = volume.probeHysteresis;
         if (dot(probeDistanceMean, probeDistanceMean) == 0) hysteresis = 0.f;
-
-        // Interpolate the new filtered distance with the existing filtered distance in the probe.
-        // A high hysteresis value emphasizes the existing probe filtered distance.
+        
         result = vec4(mix(result.rg, probeDistanceMean.rg, hysteresis), 0.f, 1.f);
         imageStore(ProbeDistance, ivec3(DispatchThreadID), result);
         return;

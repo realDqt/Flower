@@ -9,19 +9,16 @@
 #define M_2PI 6.2831853071795864f
 #define RUSSIAN_ROULETTE 0.8f
 
-// Probe classification states
-#define DDGI_PROBE_STATE_ACTIVE 0     // probe shoots rays and may be sampled by a front facing surface or another probe (recursive irradiance)
-#define DDGI_PROBE_STATE_INACTIVE 1   // probe doesn't need to shoot rays, it isn't near a front facing surface
+#define DDGI_PROBE_STATE_ACTIVE 0    
+#define DDGI_PROBE_STATE_INACTIVE 1  
 
-// The number of fixed rays that are used by probe relocation and classification.
-// These rays directions are always the same to produce temporally stable results.
 #define DDGI_NUM_FIXED_RAYS 32
 
-// Volume movement types
+
 #define DDGI_VOLUME_MOVEMENT_TYPE_DEFAULT 0
 #define DDGI_VOLUME_MOVEMENT_TYPE_SCROLLING 1
 
-// Texture formats (matches EDDGIVolumeTextureFormat)
+
 #define DDGI_VOLUME_TEXTURE_FORMAT_U32 0
 #define DDGI_VOLUME_TEXTURE_FORMAT_F16 1
 #define DDGI_VOLUME_TEXTURE_FORMAT_F16x2 2
@@ -35,7 +32,7 @@
 #define DDGI_PROBE_IRRADIANCE_WITH_BORDER_SIDE 10
 #define DDGI_PROBE_IRRADIANCE_SIDE 8
 
-#define DDGI_CHEBVSHEV_BIAS 0.2
+#define DDGI_ENABLE_CHEBVSHEV_TEST false
 
 struct Material{
     vec4 baseColor;

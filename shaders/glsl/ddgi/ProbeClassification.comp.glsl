@@ -33,31 +33,25 @@ void main()
     int rayIndex;
     int backfaceCount = 0;
     float hitDistances[DDGI_NUM_FIXED_RAYS];
-
-    // Load the hit distances and count the number of backface hits
+    
     for (rayIndex = 0; rayIndex < DDGI_NUM_FIXED_RAYS; rayIndex++)
     {
-        // Get the coordinates for the probe ray in the RayData texture array
         uvec3 rayDataTexCoords = DDGIGetRayDataTexelCoords(rayIndex, int(probeIndex), volume);
-
-        // Load the hit distance for the ray
+        
         hitDistances[rayIndex] = DDGILoadProbeRayDistance(rayDataTexCoords, volume);
-
-        // Increment the count if a backface is hit
+        
         backfaceCount += (hitDistances[rayIndex] < 0.f ? 1 : 0) ;
     }
 
     uvec3 outputCoords = DDGIGetProbeTexelCoords(int(probeIndex), volume);
 
     vec3 normalizedOffset = imageLoad(ProbeData, ivec3(outputCoords)).xyz;
-    // Early out: number of backface hits has been exceeded. The probe is probably inside geometry.
     if((float(backfaceCount) / float(DDGI_NUM_FIXED_RAYS)) > volume.probeFixedRayBackfaceThreshold)
     {
         imageStore(ProbeData, ivec3(outputCoords), vec4(normalizedOffset, DDGI_PROBE_STATE_INACTIVE));
         return;
     }
-
-    // Get the world space position of the probe
+    
     ivec3 probeCoords = DDGIGetProbeCoords(int(probeIndex), volume);
     vec3 probeWorldPosition = DDGIGetProbeWorldPosition(probeCoords, volume);
 
@@ -66,23 +60,18 @@ void main()
     // the distance(s) to the probe's voxel planes.
     for (rayIndex = 0; rayIndex < DDGI_NUM_FIXED_RAYS; rayIndex++)
     {
-        // Skip backface hits
         if(hitDistances[rayIndex] < 0) continue;
-
-        // Get the direction of the "fixed" ray
+        
         vec3 direction = DDGIGetProbeRayDirection(rayIndex, volume);
-
-        // Get the plane normals
+        
         vec3 xNormal = vec3(direction.x / max(abs(direction.x), 0.000001f), 0.f, 0.f);
         vec3 yNormal = vec3(0.f, direction.y / max(abs(direction.y), 0.000001f), 0.f);
         vec3 zNormal = vec3(0.f, 0.f, direction.z / max(abs(direction.z), 0.000001f));
-
-        // Get the relevant planes to intersect
+        
         vec3 p0x = probeWorldPosition + (volume.probeSpacing.x * xNormal);
         vec3 p0y = probeWorldPosition + (volume.probeSpacing.y * yNormal);
         vec3 p0z = probeWorldPosition + (volume.probeSpacing.z * zNormal);
-
-        // Get the ray's intersection distance with each plane
+        
         vec3 distances =
         {
             dot((p0x - probeWorldPosition), xNormal) / max(dot(direction, xNormal), 0.000001f),
@@ -95,12 +84,10 @@ void main()
         if (distances.x == 0.f) distances.x = 1e27f;
         if (distances.y == 0.f) distances.y = 1e27f;
         if (distances.z == 0.f) distances.z = 1e27f;
-
-        // Get the distance to the closest plane intersection
-        float maxDistance = min(distances.x, min(distances.y, distances.z));
-
-        // If the hit distance is less than the closest plane intersection, the probe should be active
-        if(hitDistances[rayIndex] <= maxDistance)
+        
+        float minDistance = min(distances.x, min(distances.y, distances.z));
+        
+        if(hitDistances[rayIndex] <= minDistance)
         {
             imageStore(ProbeData, ivec3(outputCoords), vec4(normalizedOffset, DDGI_PROBE_STATE_ACTIVE));
             return;
