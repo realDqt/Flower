@@ -9,19 +9,19 @@ A hardware-accelerated ray tracing engine using Vulkan
 - Next Event Estimation
 - Cosine-Weighted Importance Sampling
 - Multiple Importance Sampling
-- Lambertian Material
-- Mirror Material
+- Lambertian Material && Mirror Material
 - ReSTIR GI
+- DDGI
 
 
 
-Path Tracing(1 SPP):
+Path Tracing(1 SPP) + Temporal Denosing:
 
 ![CornellBoxPT1SPP128Bounce](./demos/CornellBoxPT1SPP128Bounce.png)
 
 
 
-Path Tracing(1 SPP):
+Path Tracing(1 SPP) + Temporal Denosing:
 
 ![CornellBoxSpecularPT1SPP](./demos/CornellBoxSpecularPT1SPP.png)
 
@@ -37,10 +37,14 @@ ReSTIR GI:
 
 ![SponzaRestirGI.png](./demos/SponzaRestirGI.png)
 
-![SponzaRestirGI2.png](./demos/SponzaRestirGI2.png)
-
 
 
 Path Tracing(1024 SPP):
 
 ![SponzaPT1024Spp.png](./demos/SponzaPT1024Spp.png)
+
+
+
+DDGI:
+
+![DDGI.png](./demos/DDGI.png)

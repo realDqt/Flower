@@ -1,4 +1,4 @@
-set "GLSLANG_VALIDATOR=E:/Vulkan/Bin/glslangValidator.exe"
+set "GLSLANG_VALIDATOR=E:/Vulkan/VulkanSDK/Bin/glslangValidator.exe"
 %GLSLANG_VALIDATOR% -V -R --target-env vulkan1.2 SceneShading.rchit.glsl -o SceneShading.rchit.spv
 %GLSLANG_VALIDATOR% -V -R --target-env vulkan1.2 Miss.rmiss.glsl -o Miss.rmiss.spv
 %GLSLANG_VALIDATOR% -V -R --target-env vulkan1.2 Shadow.rmiss.glsl -o Shadow.rmiss.spv
