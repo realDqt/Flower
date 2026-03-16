@@ -11,10 +11,6 @@ layout(binding = 1, set = 0) buffer TemporalReservoirBufferOut{
     Reservoir data[];
 } temporalReservoirBufferOut;
 
-layout(binding = 2, set = 0) buffer SpatialReservoirBufferIn{
-    Reservoir data[];
-} spatialReservoirBufferIn;
-
 layout(binding = 3, set = 0) buffer SpatialReservoirBufferOut{
     Reservoir data[];
 } spatialReservoirBufferOut;

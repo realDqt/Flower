@@ -53,7 +53,7 @@ uint getSeed()
 
 bool isValidReprojection(ivec2 prevSC)
 {
-    if(frameData.frame == 0 || prevSC.x < 0 || prevSC.x >= WIDTH || prevSC.y < 0 || prevSC.y >= HEIGHT)
+    if(prevSC.x < 0 || prevSC.x >= WIDTH || prevSC.y < 0 || prevSC.y >= HEIGHT)
             return false;
     
     float curDepth = imageLoad(curDepthImage, ivec2(gl_GlobalInvocationID.xy)).r;

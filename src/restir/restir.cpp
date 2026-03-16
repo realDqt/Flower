@@ -689,8 +689,6 @@ public:
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, 0),
 			// Binding 1: Temporal reservoir buffer out
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 1),
-			// Binding 2: Spatial Reservoir Buffer In
-			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 2),
 			// Binding 3: Spatial Reservoir Buffer Out
 			vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_RAYGEN_BIT_KHR, 3),
 			// Binding 4: Cur Depth Image
@@ -722,8 +720,7 @@ public:
 			0,
 			0,
 			0,
-			0,
-			0,
+			0
 		};
 		setLayoutBindingFlags.pBindingFlags = descriptorBindingFlags.data();
 		setLayoutBindingFlags.bindingCount = descriptorBindingFlags.size();
@@ -807,7 +804,7 @@ public:
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
 			// --------------------------Spatial reuse--------------------------------
 			{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, maxConcurrentFrames},
-				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames * 4 },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames * 3 },
 				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames * 5},
 				{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames},
 		};
@@ -937,10 +934,8 @@ public:
 				accelerationStructureWrite,
 				// Binding 1: Temporal Reservoir Buffer Out (从 temporal reuse 输出)
 				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, &temporalSampleBuffer[1 - pingPongIdx].descriptor),
-				// Binding 2: Spatial Reservoir Buffer In (ping-pong input)
-				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &spatialSampleBuffer[pingPongIdx].descriptor),
 				// Binding 3: Spatial Reservoir Buffer Out (ping-pong output)
-				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &spatialSampleBuffer[1 - pingPongIdx].descriptor),
+				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &spatialSampleBuffer[0].descriptor),
 				// Binding 4: Cur Depth Image
 				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4, &curDepthImageDescriptor),
 				// Binding 5: Cur Normal Image
@@ -977,13 +972,9 @@ public:
 		}
 	}
 	
-	void updateFrameDataBuffer()
+	void updateFrameDataBuffer(bool resetHistory)
 	{
 		static glm::mat4 prevViewProjMat = glm::mat4(1.0f);
-		if (frameData.frame == 0) {
-			prevViewProjMat = camera.matrices.perspective * camera.matrices.view;
-		}
-
 		glm::mat4 view = camera.matrices.view;
 		glm::mat4 proj = camera.matrices.perspective;
 		glm::mat4 viewProj = proj * view;
@@ -1087,24 +1078,23 @@ public:
 	
 	void updatePingPongDescriptorSets()
 	{
+		const uint32_t temporalInputIdx = pingPongIdx;
+		const uint32_t temporalOutputIdx = 1 - pingPongIdx;
+
 		// ----------------------------temporal reuse --------------------------------
-		for (auto i = 0; i < maxConcurrentFrames; i++) {
-			std::vector<VkWriteDescriptorSet> temporalReuseWriteDescriptorSets = {
-				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, &temporalSampleBuffer[pingPongIdx].descriptor),
-				vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &temporalSampleBuffer[1 - pingPongIdx].descriptor),
-			};
-			vkUpdateDescriptorSets(device, static_cast<uint32_t>(temporalReuseWriteDescriptorSets.size()), temporalReuseWriteDescriptorSets.data(), 0, nullptr);
-		}
+		std::vector<VkWriteDescriptorSet> temporalReuseWriteDescriptorSets = {
+			vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[currentBuffer], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, &temporalSampleBuffer[temporalInputIdx].descriptor),
+			vks::initializers::writeDescriptorSet(temporalReuseCompute.descriptorSets[currentBuffer], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &temporalSampleBuffer[temporalOutputIdx].descriptor),
+		};
+		vkUpdateDescriptorSets(device, static_cast<uint32_t>(temporalReuseWriteDescriptorSets.size()), temporalReuseWriteDescriptorSets.data(), 0, nullptr);
+
 		// ----------------------------spatial reuse --------------------------------
-		for (auto i = 0; i < maxConcurrentFrames; i++) {
-			std::vector<VkWriteDescriptorSet> spatialReuseWriteDescriptorSets = {
-				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, &temporalSampleBuffer[1 - pingPongIdx].descriptor),
-				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &spatialSampleBuffer[pingPongIdx].descriptor),
-				vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[i], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &spatialSampleBuffer[1 - pingPongIdx].descriptor),
-			};
-			vkUpdateDescriptorSets(device, static_cast<uint32_t>(spatialReuseWriteDescriptorSets.size()), spatialReuseWriteDescriptorSets.data(), 0, nullptr);
-		}
-		pingPongIdx = 1 - pingPongIdx;
+		std::vector<VkWriteDescriptorSet> spatialReuseWriteDescriptorSets = {
+			vks::initializers::writeDescriptorSet(spatialReuseRayTracing.descriptorSets[currentBuffer], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, &temporalSampleBuffer[temporalOutputIdx].descriptor),
+		};
+		vkUpdateDescriptorSets(device, static_cast<uint32_t>(spatialReuseWriteDescriptorSets.size()), spatialReuseWriteDescriptorSets.data(), 0, nullptr);
+
+		pingPongIdx = temporalOutputIdx;
 	}
 
 	/*
@@ -1295,7 +1285,7 @@ public:
 		
 	   // Barrier 2: Temporal Reuse (Compute) -> Spatial Reuse (Ray Tracing)
 	   VkBufferMemoryBarrier temporalToSpatialBarrier = {};
-	   temporalToSpatialBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	   temporalToSpatialBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
        temporalToSpatialBarrier.buffer = temporalSampleBuffer[pingPongIdx].buffer;
        temporalToSpatialBarrier.offset = 0;
        temporalToSpatialBarrier.size = temporalSampleBuffer[pingPongIdx].size;
@@ -1397,11 +1387,8 @@ public:
 		if (!prepared)
 			return;
 		VulkanExampleBase::prepareFrame();
-		if (camera.updated) {
-			// If the camera's view has been updated we need to  reset the frame accumulation (which is used for transparent surfaces and anti-aliasing)
-			cameraProperties.frame = -1;
-		}
-		updateFrameDataBuffer(); 
+		const bool resetHistory = camera.updated;
+		updateFrameDataBuffer(resetHistory); 
 		updatePingPongDescriptorSets();
 		updateUniformBuffers();
 		buildCommandBuffer();
