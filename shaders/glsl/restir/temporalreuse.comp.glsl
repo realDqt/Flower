@@ -32,6 +32,7 @@ layout(binding = 7, set = 0, rgba32f) readonly uniform image2D prevNormalImage;
 
 vec2 getPrevUV(vec2 uv)
 {
+    //return vec2(-1.0); //debug
     ivec2 sc = ivec2(uv.x * float(WIDTH), uv.y * float(HEIGHT));
     float ndcZ = imageLoad(curDepthImage, sc).r;
     if(ndcZ >= 0.99f) return vec2(-1.0);

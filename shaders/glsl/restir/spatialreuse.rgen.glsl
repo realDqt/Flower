@@ -67,7 +67,7 @@ bool isGeometricSimilar(ivec2 pixel_q, ivec2 pixel_r)
 uvec2 randomlyChooseNeighbor(uvec2 center, inout uint seed)
 {
     float r = sqrt(rnd(seed)) * SPATIAL_RADIUS;
-    float theta = rnd(seed) * 2.0 * 3.14159265359;
+    float theta = rnd(seed) * 2.0 * M_PI;
     vec2 offset = vec2(cos(theta), sin(theta)) * r;
 
     ivec2 neighbor = ivec2(center) + ivec2(offset);
@@ -84,7 +84,8 @@ float calcJacobian(vec3 pos_r, vec3 pos_n, vec3 pos_s, vec3 norm_s)
     float cosPhi_n = dot(normalize(pos_s2pos_n), norm_s);
     
     float jacobian = abs(cosPhi_r) / abs(cosPhi_n) * dot(pos_s2pos_n, pos_s2pos_n) / dot(pos_s2pos_r, pos_s2pos_r);
-    return jacobian;
+    float T = 10.f;
+    return clamp(jacobian, 1.f/ T, T);
 }
 
 bool isVisibleAB(vec3 pos_a, vec3 pos_b)
