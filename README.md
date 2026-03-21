@@ -39,7 +39,7 @@ ReSTIR GI:
 
 
 
-Path Tracing(1024 SPP):
+Path Tracing(1024 SPP) / Reference:
 
 ![SponzaPT1024Spp.png](./demos/SponzaPT1024Spp.png)
 

@@ -92,13 +92,13 @@ void main()
 
         if (IsVolumeMovementScrolling(volume))
         {
-            // TODO Scrolling
+            // TODO: Scrolling
         }
         
         float probeState = DDGILoadProbeState(probeIndex, volume);
         if (probeState == DDGI_PROBE_STATE_INACTIVE)
         {
-            // TODO Variability
+            // TODO: Variability
             return;
         }
         

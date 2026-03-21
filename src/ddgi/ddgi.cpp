@@ -592,7 +592,7 @@ public:
 			// If the camera's view has been updated we need to  reset the frame accumulation (which is used for transparent surfaces and anti-aliasing)
 			sceneShadingRayTracing->uniformData.frame = -1;
 		}
-		printVec3(camera.position);
+		//printVec3(camera.position);
 		updateUniformBuffers();
 		buildCommandBuffer();
 		VulkanExampleBase::submitFrame();
