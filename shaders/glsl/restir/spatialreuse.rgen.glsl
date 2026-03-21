@@ -180,7 +180,6 @@ void main() {
         vec3 norm_qn = decodeNormal(imageLoad(curNormalImage, ivec2(pixel_qn)).xyz);
         vec3 pos_qn = getWorldPos(pixel_qn);
         float jacobian = calcJacobian(pos_q, pos_qn, R_n.z.x_s.xyz, R_n.z.n_s.xyz);
-        jacobian = clamp(jacobian, 0.1, 10.0);
         
         float pq_hat_prime = pq_hat(pos_q, norm_q, R_n.z) / jacobian;
         if (!isVisibleAB(pos_q, R_n.z.x_s.xyz)) {
