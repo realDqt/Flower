@@ -9,6 +9,8 @@ public:
 		glm::mat4 projInverse;
         glm::vec3 position;
 		uint32_t frame{ 0 };
+        glm::ivec4 probeDebugFlags{ 0, 0, 0, 0 };
+        glm::vec4 probeDebugParams{ 0.15f, 0.85f, 0.0f, 0.0f };
 	} uniformData;
 	std::array<vks::Buffer, maxConcurrentFrames> uniformBuffers;
 
@@ -191,7 +193,7 @@ private:
                 { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxConcurrentFrames },
                 { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxConcurrentFrames },
                 { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxConcurrentFrames * 4 },
-                { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, maxConcurrentFrames * 2 }
+                { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, maxConcurrentFrames * 3 }
         };
         VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, maxConcurrentFrames);
         VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolCreateInfo, nullptr, &descriptorPool));

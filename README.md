@@ -48,3 +48,7 @@ Path Tracing(1024 SPP) / Reference:
 DDGI:
 
 ![DDGI.png](./demos/DDGI.png)
+
+Probe Visualization:
+
+![DDGIVisualization.png](./demos/DDGIVisualization.png)

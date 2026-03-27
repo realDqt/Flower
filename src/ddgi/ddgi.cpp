@@ -43,8 +43,13 @@ public:
     std::unique_ptr<ProbeBlendIrradianceCompute> probeBlendIrradianceCompute = nullptr;
     std::unique_ptr<ProbeBlendDistanceCompute> probeBlendDistanceCompute = nullptr;
     std::unique_ptr<ProbeRelocationCompute> probeRelocationCompute = nullptr;
-    std::unique_ptr<ProbeClassificationCompute> probeClassificationCompute = nullptr;
+	std::unique_ptr<ProbeClassificationCompute> probeClassificationCompute = nullptr;
 	std::unique_ptr<SceneShadingRayTracing> sceneShadingRayTracing = nullptr;
+
+    int32_t probeVisualizationMode{ 0 };
+    bool probeVisualizationXRay{ false };
+    float probeVisualizationRadius{ 0.15f };
+    float probeVisualizationOpacity{ 0.85f };
 
 
     CornellBox() : VulkanRaytracingSample()
@@ -374,6 +379,16 @@ public:
 		sceneShadingRayTracing->uniformData.projInverse = glm::inverse(camera.matrices.perspective);
 		sceneShadingRayTracing->uniformData.viewInverse = glm::inverse(camera.matrices.view);
         sceneShadingRayTracing->uniformData.position = -camera.position; // TODO
+        sceneShadingRayTracing->uniformData.probeDebugFlags = glm::ivec4(
+                probeVisualizationMode,
+                probeVisualizationXRay ? 1 : 0,
+                0,
+                0);
+        sceneShadingRayTracing->uniformData.probeDebugParams = glm::vec4(
+                probeVisualizationRadius,
+                probeVisualizationOpacity,
+                0.0f,
+                0.0f);
 		// This value is used to accumulate multiple frames into the finale picture
 		// It's required as ray tracing needs to do multiple passes for transparency
 		// In this sample we use noise offset by this frame index to shoot rays for transparency into different directions
@@ -597,6 +612,28 @@ public:
 		buildCommandBuffer();
 		VulkanExampleBase::submitFrame();
 	}
+
+    void OnUpdateUIOverlay(vks::UIOverlay* overlay) override
+    {
+        if (!overlay->header("DDGI Debug")) {
+            return;
+        }
+
+        bool changed = false;
+        changed |= overlay->comboBox("Probe visualization", &probeVisualizationMode, { "Off", "State", "Irradiance", "Distance" });
+
+        if (probeVisualizationMode > 0) {
+            changed |= overlay->checkBox("Probe x-ray", &probeVisualizationXRay);
+            changed |= overlay->sliderFloat("Probe radius", &probeVisualizationRadius, 0.05f, 0.45f);
+            changed |= overlay->sliderFloat("Probe opacity", &probeVisualizationOpacity, 0.10f, 1.0f);
+            overlay->text("State shows active/inactive and relocation.");
+            overlay->text("Irradiance/Distance are sampled from the view direction.");
+        }
+
+        if (changed && sceneShadingRayTracing) {
+            sceneShadingRayTracing->uniformData.frame = -1;
+        }
+    }
 };
 
 CornellBox *cornellBox;

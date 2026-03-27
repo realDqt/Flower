@@ -15,6 +15,8 @@ layout(binding = 2, set = 0) uniform CameraProperties{
 	mat4 projInverse;
 	vec3 position;
 	uint frame;
+	ivec4 probeDebugFlags;
+	vec4 probeDebugParams;
 } cam;
 
 layout(binding = 5, set = 0) readonly buffer DDGIVolumeDescGPUPackedBlock {DDGIVolumeDescGPUPacked d[];} DDGIVolumes;
@@ -247,6 +249,122 @@ vec3 evalIndirectLighting(vec3 posW, vec3 normW, vec3 baseColor, vec3 wo)
 	return irradiance * brdf;
 }
 
+float DDGIGetProbeDebugRadius(DDGIVolumeDescGPU volume)
+{
+	float minSpacing = min(volume.probeSpacing.x, min(volume.probeSpacing.y, volume.probeSpacing.z));
+	return max(0.001f, minSpacing * cam.probeDebugParams.x);
+}
+
+float DDGIIntersectSphere(Ray ray, vec3 center, float radius)
+{
+	vec3 oc = ray.origin - center;
+	float halfB = dot(oc, ray.direction);
+	float c = dot(oc, oc) - (radius * radius);
+	float discriminant = halfB * halfB - c;
+	if (discriminant < 0.0f) return -1.0f;
+
+	float sqrtDiscriminant = sqrt(discriminant);
+	float t = -halfB - sqrtDiscriminant;
+	if (t < ray.tmin) t = -halfB + sqrtDiscriminant;
+	if (t < ray.tmin || t > ray.tmax) return -1.0f;
+	return t;
+}
+
+vec3 DDGISampleProbeDebugIrradiance(int probeIndex, vec3 direction, DDGIVolumeDescGPU volume)
+{
+	vec2 octantCoords = DDGIGetOctahedralCoordinates(normalize(direction));
+	vec3 probeTextureUV = DDGIGetProbeUV(probeIndex, octantCoords, volume.probeNumIrradianceInteriorTexels, volume);
+	vec3 irradiance = textureLod(ProbeIrradiance, probeTextureUV, 0).rgb;
+	vec3 exponent = vec3(volume.probeIrradianceEncodingGamma * 0.5f);
+	irradiance = pow(irradiance, exponent);
+	return irradiance * irradiance;
+}
+
+vec2 DDGISampleProbeDebugDistance(int probeIndex, vec3 direction, DDGIVolumeDescGPU volume)
+{
+	vec2 octantCoords = DDGIGetOctahedralCoordinates(normalize(direction));
+	vec3 probeTextureUV = DDGIGetProbeUV(probeIndex, octantCoords, volume.probeNumDistanceInteriorTexels, volume);
+	return 2.0f * textureLod(ProbeDistance, probeTextureUV, 0).rg;
+}
+
+vec3 DDGIGetProbeDebugColor(int probeIndex, ivec3 probeCoords, vec3 probeWorldPosition, vec3 rayOrigin, DDGIVolumeDescGPU volume, int mode)
+{
+	float probeState = DDGILoadProbeState(probeIndex, volume);
+	vec3 color = vec3(1.0f);
+
+	if (mode == 1)
+	{
+		color = (probeState == DDGI_PROBE_STATE_INACTIVE) ? vec3(0.95f, 0.20f, 0.15f) : vec3(0.15f, 0.85f, 0.25f);
+		vec3 relocation = probeWorldPosition - DDGIGetProbeWorldPosition(probeCoords, volume);
+		float relocationRatio = clamp(length(relocation) / max(DDGIGetProbeDebugRadius(volume), 0.001f), 0.0f, 1.0f);
+		color = mix(color, vec3(0.20f, 0.55f, 1.00f), relocationRatio);
+	}
+	else if (mode == 2)
+	{
+		vec3 viewDirection = normalize(rayOrigin - probeWorldPosition);
+		color = DDGISampleProbeDebugIrradiance(probeIndex, viewDirection, volume);
+		color = color / (vec3(1.0f) + color);
+		if (probeState == DDGI_PROBE_STATE_INACTIVE) color = mix(color, vec3(0.85f, 0.15f, 0.10f), 0.70f);
+	}
+	else if (mode == 3)
+	{
+		vec3 viewDirection = normalize(rayOrigin - probeWorldPosition);
+		vec2 filteredDistance = DDGISampleProbeDebugDistance(probeIndex, viewDirection, volume);
+		float distanceRatio = saturate(filteredDistance.x / max(volume.probeMaxRayDistance, 0.001f));
+		color = mix(vec3(0.10f, 0.25f, 0.95f), vec3(0.95f, 0.85f, 0.15f), distanceRatio);
+		if (probeState == DDGI_PROBE_STATE_INACTIVE) color = mix(color, vec3(0.85f, 0.15f, 0.10f), 0.60f);
+	}
+
+	return color;
+}
+
+vec3 DDGIShadeProbeDebugSphere(vec3 baseColor, Ray ray, float t, vec3 center)
+{
+	vec3 hitPosition = ray.origin + ray.direction * t;
+	vec3 normal = normalize(hitPosition - center);
+	vec3 lightDirection = normalize(vec3(0.35f, 0.85f, 0.25f));
+	float diffuse = 0.25f + 0.75f * max(dot(normal, lightDirection), 0.0f);
+	float rim = pow(1.0f - max(dot(normal, -ray.direction), 0.0f), 4.0f);
+	return baseColor * diffuse + (vec3(1.0f) * rim * 0.20f);
+}
+
+bool DDGIFindProbeDebugHit(
+	Ray ray,
+	float sceneT,
+	DDGIVolumeDescGPU volume,
+	out float closestT,
+	out vec3 probeCenter,
+	out ivec3 probeCoords,
+	out int probeIndex,
+	out int probeBehindSurface)
+{
+	bool found = false;
+	float radius = DDGIGetProbeDebugRadius(volume);
+	int probeCount = volume.probeCounts.x * volume.probeCounts.y * volume.probeCounts.z;
+	closestT = ray.tmax;
+	probeBehindSurface = 0;
+
+	for (int linearProbeIndex = 0; linearProbeIndex < probeCount; ++linearProbeIndex)
+	{
+		ivec3 coords = DDGIGetProbeCoords(linearProbeIndex, volume);
+		int scrollingProbeIndex = DDGIGetScrollingProbeIndex(coords, volume);
+		vec3 worldPosition = DDGIGetProbeWorldPositionWithRelocation(coords, volume);
+		float t = DDGIIntersectSphere(ray, worldPosition, radius);
+		if (t < 0.0f) continue;
+
+		if (t < closestT)
+		{
+			found = true;
+			closestT = t;
+			probeCenter = worldPosition;
+			probeCoords = coords;
+			probeIndex = scrollingProbeIndex;
+			probeBehindSurface = int(t > sceneT);
+		}
+	}
+
+	return found;
+}
 
 
 void main()
@@ -263,6 +381,30 @@ void main()
 		vec3 directLighting = evalDirectLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.mat.baseColor.rgb, -ray.direction);
 		vec3 indirectLighting = evalIndirectLighting(hitValue.worldPos, hitValue.worldNormal, hitValue.mat.baseColor.rgb, -ray.direction);
 		finalColor = directLighting + indirectLighting;
+	}
+
+	int probeDebugMode = cam.probeDebugFlags.x;
+	if (probeDebugMode > 0)
+	{
+		uint volumeIndex = GetDDGIVolumeIndex();
+		DDGIVolumeDescGPU volume = UnpackDDGIVolumeDescGPU(GetDDGIVolumeConstants(volumeIndex));
+		float sceneT = (hitValue.dis < 0.0f) ? ray.tmax : hitValue.dis;
+		float probeT;
+		vec3 probeCenter;
+		ivec3 probeCoords;
+		int probeIndex;
+		int probeBehindSurface;
+		if (DDGIFindProbeDebugHit(ray, sceneT, volume, probeT, probeCenter, probeCoords, probeIndex, probeBehindSurface))
+		{
+			if ((probeBehindSurface == 0) || (cam.probeDebugFlags.y != 0))
+			{
+				vec3 probeBaseColor = DDGIGetProbeDebugColor(probeIndex, probeCoords, probeCenter, ray.origin, volume, probeDebugMode);
+				vec3 probeColor = DDGIShadeProbeDebugSphere(probeBaseColor, ray, probeT, probeCenter);
+				float alpha = saturate(cam.probeDebugParams.y);
+				if (probeBehindSurface != 0) alpha *= 0.45f;
+				finalColor = mix(finalColor, probeColor, alpha);
+			}
+		}
 	}
 
 	imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(finalColor, 1.0f));
